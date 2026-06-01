@@ -1,0 +1,87 @@
+# ==========================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# (Optional: Allow tracking of example/template env files)
+!.env.example
+!.env.template
+
+# ==========================================
+# PYTHON BACKEND (RAG & Ingestion)
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Machine Learning & HuggingFace
+# (Prevents accidentally committing massive model files if downloaded locally)
+hf_models/
+*.safetensors
+*.bin
+*.pt
+*.onnx
+*.h5
+
+# Project Specific Data (Uncomment these if you do NOT want to track your PDFs/MDs in Git)
+# policies_pdfs/
+# policies_mds/
+# policies_mds_old/
+
+# ==========================================
+# FRONTEND (React, Next.js, Vue, etc.)
+# ==========================================
+node_modules/
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ==========================================
+# OS & IDE SETTINGS
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs (VS Code, PyCharm, IntelliJ)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+
+
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
