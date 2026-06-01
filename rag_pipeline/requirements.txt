@@ -1,0 +1,23 @@
+qdrant-client
+pymupdf4llm
+
+langchain
+langchain-community
+langchain-qdrant
+
+python-dotenv
+
+# AI Embeddings (Local)
+sentence-transformers
+torch
+FlagEmbedding
+
+# Vector Storage Base Client
+qdrant-client
+
+
+
+# Backend API Serving
+fastapi
+uvicorn
+pydantic
