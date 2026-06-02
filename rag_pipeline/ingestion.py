@@ -157,6 +157,7 @@ def embed_and_ingest(char_splits, model, client,source_file_id, source_file_name
 
         embeddings = model.encode(text_content, return_dense = True, return_sparse = True)
         dense_vector = embeddings['dense_vecs']
+        # [0.3,-0.3,.....]
         lexical_weights = embeddings['lexical_weights']
 
         sparse_indices = []
