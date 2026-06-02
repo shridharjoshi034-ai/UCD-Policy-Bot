@@ -1,7 +1,7 @@
 # LocalHost-Legends
 Summer Trimester project built by the team LocalHostLegends
 
-## Title: UCD-PolicyBot: An SLM-Powered RAG System for Students' Academic Queries\
+## Title: UCD-PolicyBot: An SLM-Powered RAG System for Students' Academic Queries
 
 University College Dublin maintains a vast repository of official policies. However, students often struggle
 to find specific, actionable answers within dense PDF documents and fragmented web pages. While
