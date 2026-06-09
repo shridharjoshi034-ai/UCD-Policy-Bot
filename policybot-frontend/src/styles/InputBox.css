@@ -1,0 +1,41 @@
+.input-wrapper {
+  display: flex;
+  gap: 10px;
+
+  /* KEY FIX: shrink width + center */
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;   /* centers it */
+}
+
+.input-box {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #111827;
+  border: 1px solid #1F2937;
+  color: #E5E7EB;
+  outline: none;
+}
+
+.input-box:focus {
+  border-color: #007DB8;
+}
+
+.input-box::placeholder {
+  color: #6B7280;
+}
+
+.send-btn {
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #007DB8;
+  border: none;
+  color: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.send-btn:hover {
+  background: #006FA3;
+}
