@@ -1,3 +1,25 @@
+"""
+UCD PolicyBot Scraper — Governance Only
+========================================
+Source: https://hub.ucd.ie/usis/W_HU_REPORTING.P_DISPLAY_QUERY?p_query=GD110-1
+
+Two-level crawl:
+  Level 1 — index page → collect all detail page links
+  Level 2 — each detail page → find "Download Document" → PDF URL
+
+Sync logic:
+  - SHA-256 hash of remote file vs local file
+  - New file     → download PDF + convert to Markdown
+  - Changed file → overwrite PDF + overwrite Markdown
+  - Unchanged    → skip
+
+Output layout:
+  rag_pipeline/
+    policies_pdfs/      ← all downloaded PDFs
+    policies_mds/       ← all converted Markdowns
+    index.json
+"""
+
 import re
 import json
 import time
@@ -13,6 +35,7 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# ── Config ────────────────────────────────────────────────────────────────────
 BASE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -23,21 +46,23 @@ BASE_HEADERS = {
 
 GOVERNANCE_URL = "https://hub.ucd.ie/usis/W_HU_REPORTING.P_DISPLAY_QUERY?p_query=GD110-1"
 
-OUT_DIR = Path(".")
-PDF_DIR = OUT_DIR / "pdfs"
-MD_DIR = OUT_DIR / "markdown"
-INDEX_FILE = OUT_DIR / "index.json"
+BASE_DIR = Path(".")
+PDF_DIR = BASE_DIR / "policies_pdfs"
+MD_DIR = BASE_DIR / "policies_mds"
+INDEX_FILE = BASE_DIR / "index.json"
 
-DELAY = 1
-PDF_TIMEOUT = 30
+DELAY        = 1
+PDF_TIMEOUT  = 30
 HTTP_TIMEOUT = 20
-MAX_RETRIES = 3
+MAX_RETRIES  = 3
 
+# ── Logger ────────────────────────────────────────────────────────────────────
 log = logging.getLogger("ucd_scraper")
 log.setLevel(logging.INFO)
 log.addHandler(logging.StreamHandler())
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def slugify(text: str) -> str:
     text = text.lower().strip()
     text = re.sub(r"[^\w\s-]", "", text)
@@ -46,6 +71,7 @@ def slugify(text: str) -> str:
 
 
 def http_get(url: str, stream=False, retries=MAX_RETRIES):
+    """GET with retries. SSL verify=False for UCD institutional certs."""
     for attempt in range(1, retries + 1):
         try:
             r = requests.get(
@@ -66,44 +92,88 @@ def http_get(url: str, stream=False, retries=MAX_RETRIES):
     return None
 
 
-def get_remote_size(url: str) -> int | None:
+def sha256_of_file(path: Path) -> str:
+    """SHA-256 hash of a local file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sha256_of_url(url: str) -> str | None:
+    """
+    Download remote file into memory, compute SHA-256.
+    Returns hex string or None on failure.
+    """
     try:
-        r = requests.head(
-            url, headers=BASE_HEADERS, timeout=HTTP_TIMEOUT,
-            allow_redirects=True, verify=False,
+        r = requests.get(
+            url,
+            headers=BASE_HEADERS,
+            timeout=PDF_TIMEOUT,
+            stream=True,
+            allow_redirects=True,
+            verify=False,
         )
-        cl = r.headers.get("Content-Length")
-        if cl:
-            return int(cl)
-
-        r2 = requests.get(
-            url, headers=BASE_HEADERS, timeout=HTTP_TIMEOUT,
-            stream=True, allow_redirects=True, verify=False,
-        )
-        cl = r2.headers.get("Content-Length")
-        r2.close()
-        if cl:
-            return int(cl)
-
-        log.info(f"    Size check: downloading full file to measure ({url[-60:]})")
-        r3 = requests.get(
-            url, headers=BASE_HEADERS, timeout=PDF_TIMEOUT,
-            stream=True, allow_redirects=True, verify=False,
-        )
-        size = sum(len(chunk) for chunk in r3.iter_content(chunk_size=8192))
-        return size if size > 0 else None
-
+        r.raise_for_status()
+        h = hashlib.sha256()
+        for chunk in r.iter_content(chunk_size=65536):
+            h.update(chunk)
+        return h.hexdigest()
     except Exception as e:
-        log.warning(f"    Size check failed for {url}: {e}")
+        log.warning(f"    SHA-256 fetch failed for {url}: {e}")
         return None
 
 
+def is_changed(pdf_path: Path, pdf_url: str, stored_hash: str | None) -> tuple[bool, str | None]:
+    """
+    Compare local file vs remote using SHA-256.
+    Returns (changed: bool, remote_hash: str | None).
+
+    Flow:
+      1. Compute local SHA-256
+      2. If stored_hash matches local → file intact locally, check remote
+      3. Download remote → compute SHA-256
+      4. Compare local vs remote hash
+    """
+    local_hash = sha256_of_file(pdf_path)
+
+    # If stored hash doesn't match local file → file corrupted/modified locally
+    if stored_hash and stored_hash != local_hash:
+        log.info(f"    Local file hash mismatch (corrupted?) → re-download")
+        remote_hash = sha256_of_url(pdf_url)
+        return True, remote_hash
+
+    # Check remote
+    log.info(f"    Computing remote SHA-256 …")
+    remote_hash = sha256_of_url(pdf_url)
+    if remote_hash is None:
+        log.warning(f"    Cannot compute remote hash — assuming unchanged")
+        return False, None
+
+    changed = remote_hash != local_hash
+    return changed, remote_hash
+
+
+# ── PDF → Markdown ────────────────────────────────────────────────────────────
 def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
+    """
+    Extract text from PDF → clean Markdown.
+    Includes:
+      - YAML front matter
+      - Page markers as H6
+      - Numbered / ALL-CAPS lines promoted to headings
+      - Tables as Markdown tables
+    """
     pages_md = []
+
     try:
         with pdfplumber.open(pdf_path) as pdf:
             total_pages = len(pdf.pages)
+
             for page_num, page in enumerate(pdf.pages, start=1):
+
+                # Tables
                 tables = page.extract_tables()
                 table_texts = []
                 if tables:
@@ -118,11 +188,13 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
                                 md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
                         table_texts.append("\n".join(md_rows))
 
+                # Plain text
                 raw = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
                 raw = re.sub(r"-\n([a-z])", r"\1", raw)
                 raw = re.sub(r"\n{3,}", "\n\n", raw)
                 raw = "\n".join(l.rstrip() for l in raw.splitlines())
 
+                # Promote headings
                 promoted = []
                 for line in raw.splitlines():
                     s = line.strip()
@@ -136,10 +208,11 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
                     else:
                         promoted.append(line)
 
-                page_text = "\n".join(promoted).strip()
+                page_text  = "\n".join(promoted).strip()
                 page_block = f"###### Page {page_num} of {total_pages}\n\n{page_text}"
                 if table_texts:
                     page_block += "\n\n" + "\n\n".join(table_texts)
+
                 pages_md.append(page_block)
 
     except Exception as e:
@@ -147,6 +220,7 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
         return ""
 
     body = "\n\n---\n\n".join(pages_md)
+
     front_matter = (
         f"---\n"
         f"title: {label}\n"
@@ -161,9 +235,11 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
         f"> **Pages:** {total_pages}\n\n"
         f"---\n\n"
     )
+
     return front_matter + body
 
 
+# ── Load / save index ─────────────────────────────────────────────────────────
 def load_index() -> dict:
     if not INDEX_FILE.exists():
         return {}
@@ -180,29 +256,38 @@ def save_index(index: dict):
     INDEX_FILE.write_text(json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+# ── Level 1+2: Discover all PDFs on site ─────────────────────────────────────
 def discover_pdf_items() -> list[dict]:
     log.info(f"Discovering PDFs from: {GOVERNANCE_URL}")
+
     r = http_get(GOVERNANCE_URL)
     if not r:
         log.error("Cannot reach governance URL.")
         return []
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    soup        = BeautifulSoup(r.text, "html.parser")
     base_domain = f"{urlparse(GOVERNANCE_URL).scheme}://{urlparse(GOVERNANCE_URL).netloc}"
+
+    # Level 1: detail page links
     detail_pages = []
-    seen_detail = {GOVERNANCE_URL}
+    seen_detail  = {GOVERNANCE_URL}
 
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         if href.startswith("#") or "mailto:" in href:
             continue
         full = urljoin(GOVERNANCE_URL, href)
-        if full.startswith(base_domain) and full not in seen_detail and not href.lower().endswith(".pdf"):
+        if (
+            full.startswith(base_domain)
+            and full not in seen_detail
+            and not href.lower().endswith(".pdf")
+        ):
             seen_detail.add(full)
             detail_pages.append({"url": full, "label": a.get_text(strip=True) or full})
 
+    # Direct PDFs on index page
     pdf_items = []
-    seen_pdf = set()
+    seen_pdf  = set()
 
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
@@ -211,19 +296,21 @@ def discover_pdf_items() -> list[dict]:
             if full not in seen_pdf:
                 seen_pdf.add(full)
                 label = a.get_text(strip=True) or Path(urlparse(full).path).stem
-                slug = slugify(label) or hashlib.md5(full.encode()).hexdigest()[:12]
+                slug  = slugify(label) or hashlib.md5(full.encode()).hexdigest()[:12]
                 pdf_items.append({
-                    "label": label,
-                    "pdf_url": full,
+                    "label":      label,
+                    "pdf_url":    full,
                     "detail_url": GOVERNANCE_URL,
-                    "slug": slug,
+                    "slug":       slug,
                 })
 
     log.info(f"Found {len(detail_pages)} detail pages, {len(pdf_items)} direct PDFs on index")
 
+    # Level 2: visit each detail page
     for dp in detail_pages:
         dp_url = dp["url"]
         log.info(f"  Detail: {dp['label'][:60]}")
+
         dp_r = http_get(dp_url)
         if not dp_r:
             continue
@@ -231,6 +318,7 @@ def discover_pdf_items() -> list[dict]:
         dp_soup = BeautifulSoup(dp_r.text, "html.parser")
         pdf_url = None
 
+        # Strategy 1: "Download Document" link text
         for a in dp_soup.find_all("a", href=True):
             text = a.get_text(strip=True).lower()
             href = a["href"].strip()
@@ -238,12 +326,14 @@ def discover_pdf_items() -> list[dict]:
                 pdf_url = urljoin(dp_url, href)
                 break
 
+        # Strategy 2: any .pdf href
         if not pdf_url:
             for a in dp_soup.find_all("a", href=True):
                 if a["href"].strip().lower().endswith(".pdf"):
                     pdf_url = urljoin(dp_url, a["href"].strip())
                     break
 
+        # Strategy 3: href containing download/getfile keywords
         if not pdf_url:
             for a in dp_soup.find_all("a", href=True):
                 href = a["href"].strip().lower()
@@ -260,6 +350,7 @@ def discover_pdf_items() -> list[dict]:
             continue
         seen_pdf.add(pdf_url)
 
+        # Extract title from detail page table
         title = dp["label"]
         for row in dp_soup.find_all("tr"):
             cells = row.find_all(["td", "th"])
@@ -271,77 +362,83 @@ def discover_pdf_items() -> list[dict]:
                     break
 
         slug = slugify(title) or hashlib.md5(pdf_url.encode()).hexdigest()[:12]
-        log.info(f"    Found PDF: {title[:50]}")
+        log.info(f"    Found: {title[:50]}")
+
         pdf_items.append({
-            "label": title,
-            "pdf_url": pdf_url,
+            "label":      title,
+            "pdf_url":    pdf_url,
             "detail_url": dp_url,
-            "slug": slug,
+            "slug":       slug,
         })
 
     log.info(f"Total PDFs discovered: {len(pdf_items)}")
     return pdf_items
 
 
-def sync_and_process(discovered: list[dict], index: dict) -> dict:
+# ── Sync: compare via SHA-256, download new/changed ──────────────────────────
+def sync_and_process(discovered: list[dict], index: dict) -> tuple[dict, dict]:
     stats = {"new": 0, "changed": 0, "skipped": 0, "failed": 0}
 
     for item in discovered:
-        slug = item["slug"]
-        label = item["label"]
-        pdf_url = item["pdf_url"]
+        slug       = item["slug"]
+        label      = item["label"]
+        pdf_url    = item["pdf_url"]
         detail_url = item["detail_url"]
 
         pdf_path = PDF_DIR / f"{slug}.pdf"
-        md_path = MD_DIR / f"{slug}.md"
+        md_path  = MD_DIR  / f"{slug}.md"
         existing = index.get(slug)
-        pdf_exists = pdf_path.exists()
-        md_exists = md_path.exists()
 
+        pdf_exists = pdf_path.exists()
+        md_exists  = md_path.exists()
+
+        # ── Determine action ──────────────────────────────────────────────────
         if pdf_exists and md_exists and existing:
-            remote_size = get_remote_size(pdf_url)
-            local_size = pdf_path.stat().st_size
-            if remote_size is not None and remote_size != local_size:
+            stored_hash = existing.get("sha256")
+            changed, remote_hash = is_changed(pdf_path, pdf_url, stored_hash)
+
+            if changed:
                 action = "changed"
-                log.info(f"  [CHANGED]  {label[:50]}  (local={local_size}B remote={remote_size}B)")
-            elif remote_size is None:
-                action = "skip"
-                log.info(f"  [SKIP]     {label[:50]}  (cannot verify size, files present)")
+                log.info(f"  [CHANGED]  {label[:50]}")
             else:
                 action = "skip"
-                log.info(f"  [SKIP]     {label[:50]}  (unchanged)")
+                log.info(f"  [SKIP]     {label[:50]}  (SHA-256 match)")
+                # Update index entry with remote hash if we now have it
+                if remote_hash:
+                    existing["sha256"] = remote_hash
+                stats["skipped"] += 1
+                if slug not in index:
+                    index[slug] = {
+                        "label":      label,
+                        "pdf_url":    pdf_url,
+                        "detail_url": detail_url,
+                        "pdf_file":   str(pdf_path),
+                        "md_file":    str(md_path),
+                        "sha256":     remote_hash or stored_hash,
+                        "status":     "unchanged",
+                    }
+                continue
         else:
-            action = "new"
+            action      = "new"
+            remote_hash = None
             log.info(f"  [NEW]      {label[:50]}")
 
-        if action == "skip":
-            stats["skipped"] += 1
-            if slug not in index:
-                index[slug] = {
-                    "label": label,
-                    "pdf_url": pdf_url,
-                    "detail_url": detail_url,
-                    "pdf_file": str(pdf_path),
-                    "md_file": str(md_path),
-                    "size_bytes": pdf_path.stat().st_size if pdf_exists else None,
-                    "status": "unchanged",
-                }
-            continue
-
+        # ── Download PDF ──────────────────────────────────────────────────────
         log.info(f"    Downloading: {pdf_url}")
         dl = http_get(pdf_url, stream=True)
         if not dl:
-            log.error(f"    FAILED download: {pdf_url}")
+            log.error(f"    FAILED: {pdf_url}")
             stats["failed"] += 1
             continue
 
         with open(pdf_path, "wb") as f:
-            for chunk in dl.iter_content(chunk_size=8192):
+            for chunk in dl.iter_content(chunk_size=65536):
                 f.write(chunk)
 
-        actual_size = pdf_path.stat().st_size
-        log.info(f"    Saved PDF: {pdf_path.name} ({actual_size:,} bytes)")
+        local_hash = sha256_of_file(pdf_path)
+        log.info(f"    PDF saved:  {pdf_path.name}  SHA-256={local_hash[:16]}…")
 
+        # ── Convert to Markdown ───────────────────────────────────────────────
         md = pdf_to_markdown(pdf_path, detail_url, label)
         if not md:
             log.warning(f"    SKIP markdown (empty): {pdf_path.name}")
@@ -349,35 +446,35 @@ def sync_and_process(discovered: list[dict], index: dict) -> dict:
             continue
 
         md_path.write_text(md, encoding="utf-8")
-        log.info(f"    Saved MD:  {md_path.name} ({len(md):,} chars)")
+        log.info(f"    MD saved:   {md_path.name}  ({len(md):,} chars)")
 
+        # ── Update index ──────────────────────────────────────────────────────
         index[slug] = {
-            "label": label,
-            "pdf_url": pdf_url,
+            "label":      label,
+            "pdf_url":    pdf_url,
             "detail_url": detail_url,
-            "pdf_file": str(pdf_path),
-            "md_file": str(md_path),
-            "size_bytes": actual_size,
-            "status": action,
+            "pdf_file":   str(pdf_path),
+            "md_file":    str(md_path),
+            "sha256":     local_hash,
+            "status":     action,
         }
 
-        if action == "new":
-            stats["new"] += 1
-        else:
-            stats["changed"] += 1
+        stats["new" if action == "new" else "changed"] += 1
 
     return index, stats
 
 
+# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    
     PDF_DIR.mkdir(parents=True, exist_ok=True)
     MD_DIR.mkdir(parents=True, exist_ok=True)
+
     log.info("=" * 60)
     log.info("UCD PolicyBot Scraper — Governance PDFs")
     log.info("=" * 60)
 
-    index = load_index()
+    index      = load_index()
     log.info(f"Existing index: {len(index)} entries")
 
     discovered = discover_pdf_items()

@@ -21,3 +21,9 @@ qdrant-client
 fastapi
 uvicorn
 pydantic
+
+#Scrapping/Converting/Comparing
+requests
+beautifulsoup4
+pdfplumber
+urllib3
