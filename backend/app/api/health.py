@@ -1,9 +1,12 @@
 
 import os
 
+from dotenv import load_dotenv
 from fastapi import APIRouter
 from qdrant_client import QdrantClient 
 from app.schemas import HealthResponse
+
+load_dotenv()
 
 router = APIRouter(prefix = "/health", tags = ["Health"])
 
