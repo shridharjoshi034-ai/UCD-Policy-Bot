@@ -1,6 +1,9 @@
 # Frontend for the UCD PolicyBot
 
 React + Vite based and styled with Tailwind and CSS
+
+--- 
+
 This is a chat-based UI that connects to a FastAPI backend using Server-Sent Events (SSE).
 
 ---
