@@ -4,7 +4,7 @@ export default function SuggestedQuestions({ onSelect }) {
   const questions = [
     "Late submission policy?",
     "Extenuating circumstances?",
-    "Resit exam rules?",
+    "Plagiarism policy?",
     "Grade calculation?",
   ];
 

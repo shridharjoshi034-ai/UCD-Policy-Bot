@@ -13,7 +13,7 @@ export default function InputBox({ onSend }) {
   
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // prevents newline
+      e.preventDefault(); // prevents newline on Enter
       handleSend();
     }
   };

@@ -13,7 +13,13 @@ export default function MessageBubble({ message }) {
             <div className="citations-title">Sources:</div>
             {message.citations.map((c, i) => (
               <div key={i} className="citation-item">
-                🔗 {c.url}
+                <a
+                  href={c.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  🔗 {c.title}
+                </a>
               </div>
             ))}
           </div>

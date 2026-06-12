@@ -1,5 +1,5 @@
 import { useState } from "react";
-import useWebSocket from "../hooks/useWebSocket";
+import useChatStream from "../hooks/useChatStream";
 
 import MessageList from "./MessageList";
 import InputBox from "./InputBox";
@@ -8,8 +8,7 @@ import ucdLogo from "../assets/ucd-logo.png";
 import "../styles/ChatWindow.css";
 
 export default function ChatWindow() {
-  const { messages, sendMessage } = useWebSocket("ws://localhost:8080");
-
+  const { messages, sendMessage } = useChatStream();
   const [darkMode, setDarkMode] = useState(false);
   const [started, setStarted] = useState(false);
 
@@ -46,17 +45,17 @@ export default function ChatWindow() {
             An Coláiste Ollscoile, Baile Átha Cliath
           </p>
           <p
-  style={{
-    color: "#004077", // --ucd-navy
-    fontWeight: 700,
-    letterSpacing: "0.08em",
-    fontSize: "16px",
-    marginTop: "2px"
-  }}
->
-  STUDENT HELPDESK
-</p>
-        </div>
+            style={{
+              color: "#004077", 
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              fontSize: "16px",
+              marginTop: "2px"
+            }}
+          >
+          STUDENT HELPDESK
+          </p>
+      </div>
 
         <button
           onClick={toggleDarkMode}

@@ -2,10 +2,9 @@
   display: flex;
   gap: 10px;
 
-  /* KEY FIX: shrink width + center */
   width: 100%;
   max-width: 920px;
-  margin: 0 auto;   /* centers it */
+  margin: 0 auto;   
 }
 
 .input-box {

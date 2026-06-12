@@ -1,5 +1,5 @@
 .suggestions {
-  background: rgba(17, 24, 39, 0.6); /* deep slate */
+  background: rgba(17, 24, 39, 0.6); 
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 
@@ -27,7 +27,6 @@
   gap: 10px;
 }
 
-/* clean pill buttons */
 .list button {
   font-size: 12px;
   padding: 8px 12px;
@@ -44,7 +43,7 @@
   transition: all 0.18s ease;
 }
 
-/* hover = subtle but controlled accent */
+/* hover effect */
 .list button:hover {
   background: rgba(59, 130, 246, 0.12); /* soft blue tint */
   border-color: rgba(59, 130, 246, 0.35);
@@ -53,12 +52,10 @@
   transform: translateY(-1px);
 }
 
-/* click feedback */
 .list button:active {
   transform: scale(0.98);
 }
 
-/* accessibility */
 .list button:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.6);
   outline-offset: 2px;
