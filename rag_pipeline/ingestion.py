@@ -15,8 +15,7 @@ from FlagEmbedding import BGEM3FlagModel
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
 
-
-model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
+model = BGEM3FlagModel(os.getenv("EMBEDDING_MODEL_NAME"), use_fp16=True)
 
 # Pydantic Model
 class PolicyChunkMetadata(BaseModel):
@@ -157,6 +156,7 @@ def embed_and_ingest(char_splits, model, client,source_file_id, source_file_name
 
         embeddings = model.encode(text_content, return_dense = True, return_sparse = True)
         dense_vector = embeddings['dense_vecs']
+        # [0.3,-0.3,.....]
         lexical_weights = embeddings['lexical_weights']
 
         sparse_indices = []
