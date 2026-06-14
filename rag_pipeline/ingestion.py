@@ -15,8 +15,7 @@ from FlagEmbedding import BGEM3FlagModel
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
 
-
-model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
+model = BGEM3FlagModel(os.getenv("EMBEDDING_MODEL_NAME"), use_fp16=True)
 
 # Pydantic Model
 class PolicyChunkMetadata(BaseModel):
