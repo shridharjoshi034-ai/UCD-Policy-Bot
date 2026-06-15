@@ -119,7 +119,7 @@ def ingest():
 
         file_path = os.path.join(MDS_DIR, md_file)
         if md_file.endswith(".md"):
-            with open(file_path) as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 md_content = f.read()
 
             md_header_splits = markdown_splitter.split_text(md_content)

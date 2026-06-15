@@ -1,5 +1,6 @@
 import os
 import hashlib
+from urllib import response
 import requests
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -150,6 +151,8 @@ class PolicyRAGPipeline:
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
         try:
             response = requests.post(url, json=payload, stream=True)
+            if not response.ok:
+                print("Ollama error:", response.text)
             response.raise_for_status()
 
             for line in response.iter_lines():
@@ -159,11 +162,27 @@ class PolicyRAGPipeline:
                     import json
                     data = json.loads(chunk_json)
                     content = data.get("message", {}).get("content", "")
-                    print(content, end="", flush=True)
+                    # print(content, end="", flush=True)
+                    if content:
+                        yield content
             print("\n")
 
         except requests.exceptions.RequestException as e:
             print(f"\nFailed to connect or communicate with Ollama instance: {e}")
+        
+
+    def stream_answer(self, query_text : str):
+        """Streams answer from Ollama to the frontend"""
+
+        chunks = self.retrieve(query_text=query_text, limit=3)
+
+        # Frontend can show count of chunks found for user feedback
+        yield{"type" : "chunks_found", "count" : len(chunks)}
+
+        for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
+            yield {"type": "token", "text": token}
+        
+       
 
 
 
