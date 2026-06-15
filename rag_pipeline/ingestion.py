@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 from dotenv import load_dotenv
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -58,8 +57,6 @@ def ingest():
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     MDS_DIR = os.path.join(SCRIPT_DIR, "policies_mds")
     POLICY_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
-    ARCHIVE_DIR = os.path.join(SCRIPT_DIR, "policies_mds_old")
-    os.makedirs(ARCHIVE_DIR, exist_ok=True)
 
     client = QdrantClient(
         url=connection_url,
@@ -127,9 +124,6 @@ def ingest():
             char_splits = char_splitter.split_documents(md_header_splits)
             print(len(char_splits)," + " , file_path)
             embed_and_ingest(char_splits, model, client, source_file_id, md_file)
-
-            archive_path = os.path.join(ARCHIVE_DIR, md_file)
-            shutil.move(file_path, archive_path)
 
 
 
