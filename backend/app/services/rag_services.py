@@ -1,12 +1,18 @@
 import time
 
-def answer_question(question : str) -> dict:
-    # Simulate some processing time
-    time.sleep(1)
+def answer_question(question : str, pipeline) -> dict:
 
+    answer_parts = []
+
+    started = time.perf_counter()
+
+    for event in pipeline.stream_answer(question):
+        if event["type"] == "token":
+            answer_parts.append(event["text"])  # Append the token text to the answer_parts list
+        
     return {
-        "answer": f"This is a mock answer to the question: {question}",
+        "answer": "".join(answer_parts),
         "citations": [],
         "verification_status": "not_run",
-        "latency_ms": 1000
+        "latency_ms" : int((time.perf_counter() - started) * 1000)    
     }
