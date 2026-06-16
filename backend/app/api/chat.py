@@ -14,7 +14,7 @@ router = APIRouter(prefix = "/chat", tags = ["chat"])
 
 @router.post("/query", response_model = ChatResponse)
 async def chat_query(request : ChatRequest):
-    return answer_question(request.question);    
+    return answer_question(request.question, pipeline);    
 
 @router.post("/stream")
 async def chat_stream(request : ChatRequest):
