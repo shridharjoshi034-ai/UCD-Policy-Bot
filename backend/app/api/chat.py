@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.schemas import HealthResponse
 from app.schemas import ChatRequest, ChatResponse
 from app.services.rag_services import answer_question
-from rag_pipeline.retrieval import PolicyRAGPipeline
+from app.rag_pipeline.retrieval import PolicyRAGPipeline
 
 pipeline = PolicyRAGPipeline()
 

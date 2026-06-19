@@ -11,8 +11,8 @@ pymupdf4llm; student guides are scraped directly to Markdown). pdf_to_md.py
 can be deleted.
 """
 
-import scraper
-import ingestion
+from . import scraper
+from . import ingestion
 
 
 def initiate_ingestion():
