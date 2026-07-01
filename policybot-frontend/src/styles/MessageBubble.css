@@ -43,50 +43,50 @@
   font-weight: bold;
   margin-bottom: 4px;
 }
+
 .markdown-body h1 {
-  font-size: 20px;
-  font-weight: bold;
+  font-size: 18px;
+  font-weight: 800;
+  margin: 12px 0 8px;
+  border-bottom: 1px solid #374151;
+  padding-bottom: 4px;
 }
 
 .markdown-body h2 {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  border-bottom: 1px solid #2f3b4a;
+  padding-bottom: 3px;
+}
+
+.markdown-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 8px 0 4px;
 }
 
 .markdown-body ul {
   padding-left: 20px;
+  margin: 8px 0;
   list-style-type: disc;
 }
 
 .markdown-body li {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
+
 .markdown-body p {
   margin: 6px 0;
+  opacity: 0.95;
 }
 
 .markdown-body strong {
-  font-weight: 600;
+  font-weight: 700;
   color: #ffffff;
 }
 
 .markdown-body em {
   font-style: italic;
-  opacity: 0.9;
-}
-
-.markdown-body h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-top: 10px;
-}
-
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3 {
-  margin: 8px 0;
-}
-
-.markdown-body ul {
-  margin: 6px 0;
+  opacity: 0.85;
 }
