@@ -2,6 +2,7 @@ import os
 import hashlib
 from urllib import response
 import requests
+import re
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from FlagEmbedding import BGEM3FlagModel
@@ -132,7 +133,11 @@ class PolicyRAGPipeline:
         # Structure strict context system constraint prompt
         system_prompt = (
             "You are an advanced assistant answering queries based strictly on the provided policy documents.\n"
-            "If the answer cannot be confidently derived from the context, state that explicitly."
+            "Please follow these instructions carefully:\n"
+            "1. Answer based ONLY on the provided context.\n"
+            "2. If the answer cannot be confidently derived from the context, explicitly state that you do not know.\n"
+            "3. Format your entire response in Markdown format ONLY.\n"
+            "4. Structure your response clearly using appropriate Markdown headings, bullet points, or bold text for readability."
         )
 
         user_prompt = f"Context:\n{context_str}\n\nQuery: {query_text}\n\nAnswer:"
@@ -174,6 +179,13 @@ class PolicyRAGPipeline:
     def stream_answer(self, query_text : str):
         """Streams answer from Ollama to the frontend"""
 
+        # Check for common greetings to bypass RAG and respond instantly
+        greeting_pattern = re.compile(r'^(hi|hello|hey|good\s?(morning|afternoon|evening|day)|howdy|greetings)[!?.]*$', re.IGNORECASE)
+        if greeting_pattern.match(query_text.strip()):
+            yield {"type": "chunks_found", "count": 0}
+            yield {"type": "token", "text": "Hello! How can I assist you with UCD policies today?"}
+            return
+
         chunks = self.retrieve(query_text=query_text, limit=3)
 
         # Frontend can show count of chunks found for user feedback
@@ -182,7 +194,17 @@ class PolicyRAGPipeline:
         for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
             yield {"type": "token", "text": token}
         
-       
+        citations = []
+        for c in chunks:
+            title = c.get("h1") or c.get("source_file_name", "Unknown Source")
+            # Only add if we don't already have a citation with this title
+            if not any(cit["title"] == title for cit in citations):
+                citations.append({
+                    "title": title,
+                    "source_url": "#"
+                })
+                
+        yield {"type": "final", "citations": citations}
 
 
 
