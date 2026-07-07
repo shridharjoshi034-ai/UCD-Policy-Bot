@@ -43,7 +43,7 @@
   font-weight: bold;
   margin-bottom: 4px;
 }
-
+ 
 .markdown-body h1 {
   font-size: 18px;
   font-weight: 800;
@@ -89,4 +89,25 @@
 .markdown-body em {
   font-style: italic;
   opacity: 0.85;
+}
+.bubble-actions {
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.speak-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.speak-btn:hover {
+  color: #ffffff;
 }
