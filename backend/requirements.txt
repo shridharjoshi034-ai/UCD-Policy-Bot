@@ -1,3 +1,10 @@
+﻿# Backend API
+fastapi
+uvicorn
+pydantic
+requests
+python-dotenv
+
 # PDF Processing
 pymupdf4llm
 
@@ -14,16 +21,7 @@ langchain
 langchain-community
 langchain-qdrant
 
-# Backend API Serving
-fastapi
-uvicorn
-pydantic
-
 # Scraping / Converting
-requests
 beautifulsoup4
 markdownify
 urllib3
-
-# Config
-python-dotenv
