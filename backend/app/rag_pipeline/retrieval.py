@@ -1,8 +1,8 @@
 import os
+import re
 import hashlib
 from urllib import response
 import requests
-import re
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from FlagEmbedding import BGEM3FlagModel
@@ -133,11 +133,13 @@ class PolicyRAGPipeline:
         # Structure strict context system constraint prompt
         system_prompt = (
             "You are an advanced assistant answering queries based strictly on the provided policy documents.\n"
-            "Please follow these instructions carefully:\n"
-            "1. Answer based ONLY on the provided context.\n"
-            "2. If the answer cannot be confidently derived from the context, explicitly state that you do not know.\n"
-            "3. Format your entire response in Markdown format ONLY.\n"
-            "4. Structure your response clearly using appropriate Markdown headings, bullet points, or bold text for readability."
+            "If the answer cannot be confidently derived from the context, state that explicitly.\n"
+            "Your response MUST be entirely formatted in strict, professional Markdown. Follow these rules:\n"
+            "1. Use `#` for the main title and `##` or `###` for any sub-sections.\n"
+            "2. Use bullet points (`-`) or numbered lists for any sequence of facts, steps, or rules.\n"
+            "3. Emphasize important terms using **bold** text.\n"
+            "4. If presenting comparative data or multiple attributes, use Markdown tables.\n"
+            "5. Never output a wall of plain text; always structure your paragraphs clearly."
         )
 
         user_prompt = f"Context:\n{context_str}\n\nQuery: {query_text}\n\nAnswer:"
@@ -179,13 +181,6 @@ class PolicyRAGPipeline:
     def stream_answer(self, query_text : str):
         """Streams answer from Ollama to the frontend"""
 
-        # Check for common greetings to bypass RAG and respond instantly
-        greeting_pattern = re.compile(r'^(hi|hello|hey|good\s?(morning|afternoon|evening|day)|howdy|greetings)[!?.]*$', re.IGNORECASE)
-        if greeting_pattern.match(query_text.strip()):
-            yield {"type": "chunks_found", "count": 0}
-            yield {"type": "token", "text": "Hello! How can I assist you with UCD policies today?"}
-            return
-
         chunks = self.retrieve(query_text=query_text, limit=3)
 
         # Frontend can show count of chunks found for user feedback
@@ -194,32 +189,39 @@ class PolicyRAGPipeline:
         for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
             yield {"type": "token", "text": token}
         
-        citations = []
-        for c in chunks:
-            title = c.get("h1") or c.get("source_file_name", "Unknown Source")
-            # Only add if we don't already have a citation with this title
-            if not any(cit["title"] == title for cit in citations):
-                citations.append({
-                    "title": title,
-                    "source_url": "#"
-                })
-                
-        yield {"type": "final", "citations": citations}
+       
 
-
+    def check_greeting(self, query_text: str) -> Optional[str]:
+        """Checks if the query is a standard greeting and returns a pre-written response if so."""
+        pattern = r'^\s*(hi|hello|hey|greetings|how are you|good morning|good afternoon|good evening)(?:\s+there|(?:\s*,\s*)?how are you(?:\s+doing)?)?[\s?.!]*$'
+        if re.match(pattern, query_text, re.IGNORECASE):
+            return (
+                "# Hello! 👋\n\n"
+                "I am the UCD Policy Assistant. I can help answer your questions regarding UCD policies. "
+                "How can I help you today?"
+            )
+        return None
 
 if __name__ == "__main__":
     # Instantiate the unified system pipeline
     pipeline = PolicyRAGPipeline()
 
     try:
-        query = "How can I apply for Extenuating circumstances?"
+        query = "Hello, how are you?"
 
-        # 1. Execute Retrieval
-        chunks = pipeline.retrieve(query_text=query, limit=10)
-
-        # 2. Execute Local Text Generation
-        pipeline.generate_answer(query_text=query, retrieved_chunks=chunks)
+        # 1. Check for basic greeting first
+        greeting_response = pipeline.check_greeting(query)
+        
+        if greeting_response:
+            print(f"\n--- Generating Pre-written Greeting Response ---")
+            print(greeting_response)
+            print("\n")
+        else:
+            # 2. Execute Retrieval
+            chunks = pipeline.retrieve(query_text=query, limit=10)
+    
+            # 3. Execute Local Text Generation
+            pipeline.generate_answer(query_text=query, retrieved_chunks=chunks)
 
     finally:
         # 3. Always close connections cleanly before exit
