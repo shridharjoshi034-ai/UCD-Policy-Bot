@@ -180,6 +180,11 @@ class PolicyRAGPipeline:
 
     def stream_answer(self, query_text : str):
         """Streams answer from Ollama to the frontend"""
+        
+        greeting_response = self.check_greeting(query_text)
+        if greeting_response:
+            yield {"type": "token", "text": greeting_response}
+            return
 
         chunks = self.retrieve(query_text=query_text, limit=3)
 
@@ -188,15 +193,13 @@ class PolicyRAGPipeline:
 
         for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
             yield {"type": "token", "text": token}
-        
-       
 
     def check_greeting(self, query_text: str) -> Optional[str]:
         """Checks if the query is a standard greeting and returns a pre-written response if so."""
         pattern = r'^\s*(hi|hello|hey|greetings|how are you|good morning|good afternoon|good evening)(?:\s+there|(?:\s*,\s*)?how are you(?:\s+doing)?)?[\s?.!]*$'
         if re.match(pattern, query_text, re.IGNORECASE):
             return (
-                "# Hello! 👋\n\n"
+                "Hello! 👋\n\n"
                 "I am the UCD Policy Assistant. I can help answer your questions regarding UCD policies. "
                 "How can I help you today?"
             )
