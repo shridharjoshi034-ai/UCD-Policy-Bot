@@ -184,6 +184,7 @@ class PolicyRAGPipeline:
         greeting_response = self.check_greeting(query_text)
         if greeting_response:
             yield {"type": "token", "text": greeting_response}
+            yield {"type": "final", "citations": []}
             return
 
         chunks = self.retrieve(query_text=query_text, limit=3)
@@ -193,6 +194,20 @@ class PolicyRAGPipeline:
 
         for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
             yield {"type": "token", "text": token}
+
+        # Format citations from unique source files
+        citations = []
+        seen_files = set()
+        for chunk in chunks:
+            file_name = chunk.get("source_file_name")
+            if file_name and file_name not in seen_files:
+                seen_files.add(file_name)
+                citations.append({
+                    "title": file_name,
+                    "source_url": "#"
+                })
+
+        yield {"type": "final", "citations": citations}
 
     def check_greeting(self, query_text: str) -> Optional[str]:
         """Checks if the query is a standard greeting and returns a pre-written response if so."""
