@@ -1,9 +1,9 @@
 import os
 import re
 import hashlib
-from urllib import response
-import requests
-from typing import List, Dict, Any, Optional
+import json
+import httpx
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
@@ -128,7 +128,7 @@ class PolicyRAGPipeline:
 
             return results
 
-    def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]):
+    async def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         """Constructs context template and handles generation stream via Ollama."""
 
         # Compile retrieved chunks into structural context block
@@ -164,7 +164,10 @@ class PolicyRAGPipeline:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "stream": True
+            "stream": True,
+            "options": {
+                "temperature": 0.1
+            }
         }
 
         with self.langfuse.start_as_current_observation(as_type="generation",name="ollama-generate",model=self.ollama_model_name,input=[{"role": "system", "content": system_prompt},
@@ -212,7 +215,7 @@ class PolicyRAGPipeline:
                 yield {"type": "final", "citations": []}
                 return
 
-            chunks = self.retrieve(query_text=query_text, limit=3)
+            chunks = self.retrieve(query_text=query_text, limit=5)
 
             # Frontend can show count of chunks found for user feedback
             yield{"type" : "chunks_found", "count" : len(chunks)}
@@ -248,8 +251,8 @@ class PolicyRAGPipeline:
             )
         return None
 
-if __name__ == "__main__":
-    # Instantiate the unified system pipeline
+async def main():
+    """Async entry point for testing the pipeline locally."""
     pipeline = PolicyRAGPipeline()
 
     try:
@@ -257,7 +260,7 @@ if __name__ == "__main__":
 
         # 1. Check for basic greeting first
         greeting_response = pipeline.check_greeting(query)
-        
+
         if greeting_response:
             print(f"\n--- Generating Pre-written Greeting Response ---")
             print(greeting_response)
@@ -265,10 +268,16 @@ if __name__ == "__main__":
         else:
             # 2. Execute Retrieval
             chunks = pipeline.retrieve(query_text=query, limit=10)
-    
-            # 3. Execute Local Text Generation
-            pipeline.generate_answer(query_text=query, retrieved_chunks=chunks)
+
+            # 3. Execute Local Text Generation (now async)
+            async for token in pipeline.generate_answer(query_text=query, retrieved_chunks=chunks):
+                print(token, end="", flush=True)
 
     finally:
-        # 3. Always close connections cleanly before exit
+        # Always close connections cleanly before exit
         pipeline.close()
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
