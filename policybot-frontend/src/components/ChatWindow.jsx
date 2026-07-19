@@ -10,14 +10,12 @@ import "../styles/ChatWindow.css";
 export default function ChatWindow() {
   const { messages, sendMessage } = useChatStream();
   const [darkMode, setDarkMode] = useState(false);
-  const [started, setStarted] = useState(false);
 
   const toggleDarkMode = () => {
     setDarkMode((prev) => !prev);
   };
 
   const handleSend = (msg) => {
-    if (!started) setStarted(true);
     sendMessage(msg);
   };
 
@@ -81,7 +79,7 @@ export default function ChatWindow() {
           </div>
         </div>
       ) : (
-          <div className="flex-1 overflow-y-auto px-4 py-6">
+          <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll">
           <div className="max-w-4xl mx-auto">
             <MessageList messages={messages} />
           </div>

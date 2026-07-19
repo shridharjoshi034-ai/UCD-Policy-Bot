@@ -1,10 +1,20 @@
+import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from app.api import chat, health, sources
+from app.api.chat import pipeline
 
 
-app = FastAPI(title="UCD PolicyBot Backend")
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Warms up the embedding model and Ollama LLM at backend startup,
+    so the first real user query doesn't pay the cold-load cost."""
+    pipeline.warmup()
+    yield
+    pipeline.close()
+
+
+app = FastAPI(title="UCD PolicyBot Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

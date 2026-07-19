@@ -35,10 +35,13 @@ hf_models/
 *.onnx
 *.h5
 
-# Project Specific Data (Uncomment these if you do NOT want to track your PDFs/MDs in Git)
-# policies_pdfs/
-# policies_mds/
-# policies_mds_old/
+# Project Specific Data
+policies_pdfs/
+policies_mds/
+policies_mds_old/
+
+# Freebuff desktop data
+.freebuff/
 
 # ==========================================
 # FRONTEND (React, Next.js, Vue, etc.)

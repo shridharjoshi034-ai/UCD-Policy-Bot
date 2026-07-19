@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override for Docker: the container needs host.docker.internal to reach
+      # the host machine's Ollama instance. localhost inside a container points
+      # to the container itself, not the host.
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      # Mount huggingface cache so the embedding model isn't downloaded every time
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    extra_hosts:
+      # Allow backend to connect to host's Ollama instance
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./policybot-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend

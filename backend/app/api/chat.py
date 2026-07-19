@@ -1,9 +1,6 @@
-import time
-from urllib import request
 import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from app.schemas import HealthResponse
 from app.schemas import ChatRequest, ChatResponse
 from app.services.rag_services import answer_question
 from app.rag_pipeline.retrieval import PolicyRAGPipeline
@@ -14,7 +11,7 @@ router = APIRouter(prefix = "/chat", tags = ["chat"])
 
 @router.post("/query", response_model = ChatResponse)
 async def chat_query(request : ChatRequest):
-    return answer_question(request.question, pipeline);    
+    return answer_question(request.question, pipeline)
 
 @router.post("/stream")
 async def chat_stream(request : ChatRequest):

@@ -43,3 +43,85 @@
   font-weight: bold;
   margin-bottom: 4px;
 }
+ 
+.markdown-body h1 {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 12px 0 8px;
+  border-bottom: 1px solid #374151;
+  padding-bottom: 4px;
+}
+
+.markdown-body h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  border-bottom: 1px solid #2f3b4a;
+  padding-bottom: 3px;
+}
+
+.markdown-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.markdown-body ul {
+  padding-left: 20px;
+  margin: 8px 0;
+  list-style-type: disc;
+}
+
+.markdown-body li {
+  margin-bottom: 6px;
+}
+
+.markdown-body p {
+  margin: 6px 0;
+  opacity: 0.95;
+}
+
+.markdown-body strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.markdown-body em {
+  font-style: italic;
+  opacity: 0.85;
+}
+.bubble-actions {
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.speak-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.speak-btn:hover {
+  color: #ffffff;
+}
+
+.status-line {
+  font-size: 0.9rem;
+  color: #6b7280;
+  padding: 4px 0 8px 0;
+  border-bottom: 1px dashed #e5e7eb;
+  margin-bottom: 8px;
+}
+.status-line.thinking::before {
+  content: "⏳ ";
+}
+.status-line.thought::before {
+  content: "⏱️ ";
+}

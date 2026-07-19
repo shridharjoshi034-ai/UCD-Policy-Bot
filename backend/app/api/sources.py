@@ -1,5 +1,5 @@
 from app.schemas import SourceMetaData
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter
 from app.services.source_services import get_source_list
 
 router = APIRouter(prefix = "/sources", tags = ["sources"])

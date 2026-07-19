@@ -1,4 +1,4 @@
-﻿# Backend API
+# Backend API
 fastapi
 uvicorn
 pydantic
@@ -9,17 +9,14 @@ python-dotenv
 pymupdf4llm
 
 # AI Embeddings (Local)
-sentence-transformers
-torch
-FlagEmbedding
+fastembed
 
 # Vector Storage
 qdrant-client
 
-# LangChain
+# LangChain (for text splitting)
 langchain
-langchain-community
-langchain-qdrant
+langchain-text-splitters
 
 # Scraping / Converting
 beautifulsoup4
