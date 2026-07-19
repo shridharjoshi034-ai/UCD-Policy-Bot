@@ -1,13 +1,13 @@
 import time
 
-def answer_question(question : str, pipeline) -> dict:
+async def answer_question(question : str, pipeline) -> dict:
 
     answer_parts = []
     citations = []
 
     started = time.perf_counter()
 
-    for event in pipeline.stream_answer(question):
+    async for event in pipeline.stream_answer(question):
         if event["type"] == "token":
             answer_parts.append(event["text"])
         elif event["type"] == "final":

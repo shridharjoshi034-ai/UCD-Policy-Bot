@@ -72,6 +72,7 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+nul
 
 # IDEs (VS Code, PyCharm, IntelliJ)
 .vscode/

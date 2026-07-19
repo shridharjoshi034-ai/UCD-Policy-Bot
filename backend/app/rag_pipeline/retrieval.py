@@ -1,7 +1,9 @@
 import os
 import json
 import time
+import asyncio
 import requests
+import httpx
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
@@ -238,9 +240,11 @@ class PolicyRAGPipeline:
 
         return results
 
-    def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]):
+    async def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]):
         """Constructs context template and handles generation stream via Ollama.
-        Yields raw token strings."""
+        Async generator — iterated directly on the event loop so the entire request
+        stays on one thread (critical for OpenTelemetry/Langfuse span context).
+        Uses httpx.AsyncClient.stream() instead of blocking requests.post()."""
 
         context_blocks = []
         for chunk in retrieved_chunks:
@@ -277,27 +281,30 @@ class PolicyRAGPipeline:
 
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
         try:
-            response = requests.post(url, json=payload, stream=True, timeout=OLLAMA_TIMEOUT)
-            if not response.ok:
-                print("Ollama error:", response.text)
-            response.raise_for_status()
+            async with httpx.AsyncClient(timeout=httpx.Timeout(OLLAMA_TIMEOUT)) as client:
+                async with client.stream("POST", url, json=payload) as response:
+                    if not response.is_success:
+                        body = await response.aread()
+                        print("Ollama error:", body.decode())
+                    response.raise_for_status()
 
-            for line in response.iter_lines():
-                if line:
-                    chunk_json = line.decode('utf-8')
-                    data = json.loads(chunk_json)
-                    content = data.get("message", {}).get("content", "")
-                    if content:
-                        yield content
+                    async for line in response.aiter_lines():
+                        if line:
+                            data = json.loads(line)
+                            content = data.get("message", {}).get("content", "")
+                            if content:
+                                yield content
             print("\n")
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             print(f"\nFailed to connect or communicate with Ollama instance: {e}")
 
-    def stream_answer(self, query_text: str):
-        """Streams answer from Ollama to the frontend.
-        Measures generation latency (wall-clock from first token request to stream end)
-        per-request, safely even under concurrent load."""
+    async def stream_answer(self, query_text: str):
+        """Async generator — streams answer from Ollama to the frontend.
+        Stays on the event-loop thread for the entire request so OpenTelemetry
+        context.attach()/detach() always happen on the same thread.
+
+        Sync work (retrieve, check_greeting) is offloaded via asyncio.to_thread()."""
 
         greeting_response = self.check_greeting(query_text)
         if greeting_response:
@@ -305,7 +312,7 @@ class PolicyRAGPipeline:
             yield {"type": "final", "citations": [], "latency_seconds": 0.0}
             return
 
-        chunks = self.retrieve(query_text=query_text, limit=3)
+        chunks = await asyncio.to_thread(self.retrieve, query_text=query_text, limit=3)
         yield {"type": "chunks_found", "count": len(chunks)}
 
         # Stream individual chunk metadata as they're retrieved so the frontend
@@ -322,13 +329,13 @@ class PolicyRAGPipeline:
                 }
 
         # Per-request latency measurement: starts when we begin consuming tokens,
-        # stops when the generator is exhausted. No instance variables = thread-safe.
+        # stops when the generator is exhausted.
         start_time = time.time()
         token_count = 0
         first_token_time = None
 
         try:
-            for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
+            async for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
                 if token_count == 0:
                     first_token_time = time.time()
                     print(f"[Latency] Time to first token: {first_token_time - start_time:.3f}s")
@@ -381,23 +388,26 @@ class PolicyRAGPipeline:
 
 
 if __name__ == "__main__":
-    pipeline = PolicyRAGPipeline()
-    pipeline.warmup()
+    async def _main():
+        pipeline = PolicyRAGPipeline()
+        pipeline.warmup()
 
-    try:
-        query = "What is the policy on academic misconduct?"
-        print(f"\n--- Test Query: {query!r} ---\n")
+        try:
+            query = "What is the policy on academic misconduct?"
+            print(f"\n--- Test Query: {query!r} ---\n")
 
-        for event in pipeline.stream_answer(query):
-            if event["type"] == "chunks_found":
-                print(f"[chunks_found] {event['count']} chunks retrieved")
-            elif event["type"] == "token":
-                print(event["text"], end="", flush=True)
-            elif event["type"] == "final":
-                print("\n\n--- Citations ---")
-                for c in event["citations"]:
-                    print(f"- {c['title']}")
-                print(f"\n--- Latency: {event['latency_seconds']:.3f}s ---")
+            async for event in pipeline.stream_answer(query):
+                if event["type"] == "chunks_found":
+                    print(f"[chunks_found] {event['count']} chunks retrieved")
+                elif event["type"] == "token":
+                    print(event["text"], end="", flush=True)
+                elif event["type"] == "final":
+                    print("\n\n--- Citations ---")
+                    for c in event["citations"]:
+                        print(f"- {c['title']}")
+                    print(f"\n--- Latency: {event['latency_seconds']:.3f}s ---")
 
-    finally:
-        pipeline.close()
+        finally:
+            pipeline.close()
+
+    asyncio.run(_main())

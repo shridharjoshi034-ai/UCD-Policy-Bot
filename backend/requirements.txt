@@ -3,6 +3,7 @@ fastapi
 uvicorn
 pydantic
 requests
+httpx
 python-dotenv
 
 # PDF Processing

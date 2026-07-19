@@ -14,14 +14,14 @@ env_path = script_dir / "backend" / ".env"
 if env_path.exists():
     load_dotenv(env_path)
 else:
-    print("❌ .env file not found in backend/ folder.")
+    print("ERROR: .env file not found in backend/ folder.")
     exit(1)
 
 url = os.getenv("QDRANT_URL")
 api_key = os.getenv("QDRANT_API_KEY")
 
 if not url:
-    print("❌ QDRANT_URL not set in .env")
+    print("ERROR: QDRANT_URL not set in .env")
     exit(1)
 
 # ============================================================
@@ -31,7 +31,7 @@ def display_collections(client):
     """Fetch and print all collections with details."""
     collections = client.get_collections().collections
     if not collections:
-        print("\n📭 No collections found.")
+        print("\nNo collections found.")
         return []
 
     print("\n" + "=" * 60)
@@ -95,15 +95,15 @@ def display_collections(client):
 # ============================================================
 def delete_collection(client, collection_name):
     """Delete a collection after user confirmation."""
-    confirm = input(f"⚠️  Are you sure you want to delete collection '{collection_name}'? This cannot be undone. (y/n): ")
+    confirm = input(f"Are you sure you want to delete collection '{collection_name}'? This cannot be undone. (y/n): ")
     if confirm.lower() == 'y':
         try:
             client.delete_collection(collection_name=collection_name)
-            print(f"✅ Collection '{collection_name}' deleted successfully.")
+            print(f"Collection '{collection_name}' deleted successfully.")
         except Exception as e:
-            print(f"❌ Failed to delete collection '{collection_name}': {e}")
+            print(f"Failed to delete collection '{collection_name}': {e}")
     else:
-        print("❌ Deletion cancelled.")
+        print("Deletion cancelled.")
 
 # ============================================================
 # Main
@@ -111,7 +111,7 @@ def delete_collection(client, collection_name):
 try:
     client = QdrantClient(url=url, api_key=api_key)
 except Exception as e:
-    print(f"❌ Cannot connect to Qdrant: {e}")
+    print(f"Cannot connect to Qdrant: {e}")
     exit(1)
 
 while True:
@@ -123,7 +123,7 @@ while True:
         break
 
     # Ask if user wants to delete
-    choice = input("\n🗑️  Do you want to delete a collection? (y/n): ").lower()
+    choice = input("\nDo you want to delete a collection? (y/n): ").lower()
     if choice != 'y':
         print("Exiting without deletions.")
         break
@@ -132,19 +132,19 @@ while True:
     try:
         idx = int(input("Enter the number of the collection to delete: "))
         if idx < 1 or idx > len(collection_names):
-            print(f"❌ Invalid number. Please enter a number between 1 and {len(collection_names)}.")
+            print(f"Invalid number. Please enter a number between 1 and {len(collection_names)}.")
             continue
         collection_to_delete = collection_names[idx - 1]
     except ValueError:
-        print("❌ Please enter a valid number.")
+        print("Please enter a valid number.")
         continue
 
     # Confirm and delete
     delete_collection(client, collection_to_delete)
 
     # After deletion, loop will show updated list again
-    print("\n📋 Updated collection list:\n")
+    print("\nUpdated collection list:\n")
 
 # Final display after loop
-print("\n📋 Final collection list:")
+print("\nFinal collection list:")
 display_collections(client)
