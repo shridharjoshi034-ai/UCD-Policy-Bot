@@ -16,6 +16,9 @@ FlagEmbedding
 # Vector Storage
 qdrant-client
 
+# Observability
+langfuse
+
 # LangChain
 langchain
 langchain-community

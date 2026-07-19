@@ -5,11 +5,14 @@ from urllib import response
 import requests
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+
+from langfuse import get_client
 from FlagEmbedding import BGEM3FlagModel
 from qdrant_client import QdrantClient, models
 
-# Load environment variables
-load_dotenv()
+
 
 
 class PolicyRAGPipeline:
@@ -21,7 +24,7 @@ class PolicyRAGPipeline:
 
         # Model Configs from .env
         self.embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
-        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "gemma4:e2b")
+        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "qwen2.5:1.5b")
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
         print(f"[Init] Embedding Model: {self.embedding_model_name}")
@@ -35,6 +38,9 @@ class PolicyRAGPipeline:
             url=self.connection_url,
             api_key=self.api_key,
         )
+
+        #Initialize langfuse client
+        self.langfuse = get_client()
 
     def close(self):
         """Cleanly closes the underlying Qdrant client network connections."""
@@ -68,53 +74,59 @@ class PolicyRAGPipeline:
             limit: int = 5,
             file_id_filter: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Executes concurrent Dense + Sparse hybrid retrieval utilizing native RRF inside Qdrant."""
-        dense_vec, sparse_idx, sparse_vals = self._process_query_vectors(query_text)
+        with self.langfuse.start_as_current_observation(as_type="span",name="retrieve-chunks",input={"query":query_text,"limit":limit}) as span:
+            """Executes concurrent Dense + Sparse hybrid retrieval utilizing native RRF inside Qdrant."""
+            dense_vec, sparse_idx, sparse_vals = self._process_query_vectors(query_text)
 
-        query_filter = None
-        if file_id_filter:
-            query_filter = models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="source_file_id",
-                        match=models.MatchValue(value=file_id_filter)
+            query_filter = None
+            if file_id_filter:
+                query_filter = models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="source_file_id",
+                            match=models.MatchValue(value=file_id_filter)
+                        )
+                    ]
+                )
+
+            response = self.client.query_points(
+                collection_name=self.collection_name,
+                prefetch=[
+                    models.Prefetch(
+                        query=dense_vec,
+                        using="",
+                        limit=limit * 3,
+                        filter=query_filter
+                    ),
+                    models.Prefetch(
+                        query=models.SparseVector(
+                            indices=sparse_idx,
+                            values=sparse_vals
+                        ),
+                        using="sparse",
+                        limit=limit * 3,
+                        filter=query_filter
                     )
-                ]
+                ],
+                query=models.FusionQuery(fusion=models.Fusion.RRF),
+                limit=limit
             )
 
-        response = self.client.query_points(
-            collection_name=self.collection_name,
-            prefetch=[
-                models.Prefetch(
-                    query=dense_vec,
-                    using="",
-                    limit=limit * 3,
-                    filter=query_filter
-                ),
-                models.Prefetch(
-                    query=models.SparseVector(
-                        indices=sparse_idx,
-                        values=sparse_vals
-                    ),
-                    using="sparse",
-                    limit=limit * 3,
-                    filter=query_filter
-                )
-            ],
-            query=models.FusionQuery(fusion=models.Fusion.RRF),
-            limit=limit
-        )
+            results = []
+            for point in response.points:
+                results.append({
+                    "text": point.payload.get("text"),
+                    "source_file_name": point.payload.get("source_file_name"),
+                    "h1": point.payload.get("Header 1"),
+                    "h2": point.payload.get("Header 2"),
+                })
 
-        results = []
-        for point in response.points:
-            results.append({
-                "text": point.payload.get("text"),
-                "source_file_name": point.payload.get("source_file_name"),
-                "h1": point.payload.get("Header 1"),
-                "h2": point.payload.get("Header 2"),
+            span.update(output={
+                "chunk_count": len(results),
+                "sources": [r["source_file_name"] for r in results if r["source_file_name"]],
             })
 
-        return results
+            return results
 
     def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]):
         """Constructs context template and handles generation stream via Ollama."""
@@ -155,59 +167,75 @@ class PolicyRAGPipeline:
             "stream": True
         }
 
-        print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
-        try:
-            response = requests.post(url, json=payload, stream=True)
-            if not response.ok:
-                print("Ollama error:", response.text)
-            response.raise_for_status()
+        with self.langfuse.start_as_current_observation(as_type="generation",name="ollama-generate",model=self.ollama_model_name,input=[{"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},],) as generation:
+            full_text = []
+            usage_details = {}
+            print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
+            try:
+                response = requests.post(url, json=payload, stream=True)
+                if not response.ok:
+                    print("Ollama error:", response.text)
+                response.raise_for_status()
 
-            for line in response.iter_lines():
-                if line:
-                    chunk_json = line.decode('utf-8')
-                    # Parse continuous JSON streaming frames out safely
-                    import json
-                    data = json.loads(chunk_json)
-                    content = data.get("message", {}).get("content", "")
-                    # print(content, end="", flush=True)
-                    if content:
-                        yield content
-            print("\n")
+                for line in response.iter_lines():
+                    if line:
+                        chunk_json = line.decode('utf-8')
+                        # Parse continuous JSON streaming frames out safely
+                        import json
+                        data = json.loads(chunk_json)
+                        content = data.get("message", {}).get("content", "")
+                        # print(content, end="", flush=True)
+                        if content:
+                            yield content
+                        if data.get("done"):
+                            usage_details.update({
+                                "input_tokens": data.get("prompt_eval_count", 0),
+                                "output_tokens": data.get("eval_count", 0),
+                            })
+                print("\n")
 
-        except requests.exceptions.RequestException as e:
-            print(f"\nFailed to connect or communicate with Ollama instance: {e}")
+            except requests.exceptions.RequestException as e:
+                print(f"\nFailed to connect or communicate with Ollama instance: {e}")
+                generation.update(level="ERROR", status_message=str(e))
+            finally:
+                generation.update(output="".join(full_text),usage_details=usage_details)
         
 
     def stream_answer(self, query_text : str):
-        """Streams answer from Ollama to the frontend"""
-        
-        greeting_response = self.check_greeting(query_text)
-        if greeting_response:
-            yield {"type": "token", "text": greeting_response}
-            yield {"type": "final", "citations": []}
-            return
+        with self.langfuse.start_as_current_observation(as_type="span",name="chat_response",input={"question":query_text},) as root_span:
+            """Streams answer from Ollama to the frontend"""
+            
+            greeting_response = self.check_greeting(query_text)
+            if greeting_response:
+                yield {"type": "token", "text": greeting_response}
+                yield {"type": "final", "citations": []}
+                return
 
-        chunks = self.retrieve(query_text=query_text, limit=3)
+            chunks = self.retrieve(query_text=query_text, limit=3)
 
-        # Frontend can show count of chunks found for user feedback
-        yield{"type" : "chunks_found", "count" : len(chunks)}
+            # Frontend can show count of chunks found for user feedback
+            yield{"type" : "chunks_found", "count" : len(chunks)}
 
-        for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
-            yield {"type": "token", "text": token}
+            answer_parts = []
 
-        # Format citations from unique source files
-        citations = []
-        seen_files = set()
-        for chunk in chunks:
-            file_name = chunk.get("source_file_name")
-            if file_name and file_name not in seen_files:
-                seen_files.add(file_name)
-                citations.append({
-                    "title": file_name,
-                    "source_url": "#"
-                })
+            for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
+                answer_parts.append(token)
+                yield {"type": "token", "text": token}
 
-        yield {"type": "final", "citations": citations}
+            # Format citations from unique source files
+            citations = []
+            seen_files = set()
+            for chunk in chunks:
+                file_name = chunk.get("source_file_name")
+                if file_name and file_name not in seen_files:
+                    seen_files.add(file_name)
+                    citations.append({
+                        "title": file_name,
+                        "source_url": "#"
+                    })
+            root_span.update(output={"answer":"".join(answer_parts),"citations":citations})
+            yield {"type": "final", "citations": citations}
 
     def check_greeting(self, query_text: str) -> Optional[str]:
         """Checks if the query is a standard greeting and returns a pre-written response if so."""
