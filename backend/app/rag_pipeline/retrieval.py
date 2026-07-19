@@ -21,7 +21,7 @@ class PolicyRAGPipeline:
 
         # Model Configs from .env
         self.embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
-        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "gemma4:e2b")
+        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "qwen2.5:1.5b")
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
         print(f"[Init] Embedding Model: {self.embedding_model_name}")
@@ -152,7 +152,10 @@ class PolicyRAGPipeline:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "stream": True
+            "stream": True,
+            "options": {
+                "temperature": 0.1
+            }
         }
 
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
@@ -186,7 +189,7 @@ class PolicyRAGPipeline:
             yield {"type": "final", "citations": []}
             return
 
-        chunks = self.retrieve(query_text=query_text, limit=3)
+        chunks = self.retrieve(query_text=query_text, limit=5)
 
         # Frontend can show count of chunks found for user feedback
         yield {"type": "chunks_found", "count": len(chunks)}
