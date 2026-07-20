@@ -1,4 +1,4 @@
-﻿# Backend API
+# Backend API
 fastapi
 uvicorn
 pydantic
@@ -16,6 +16,9 @@ FlagEmbedding
 
 # Vector Storage
 qdrant-client
+
+# Observability
+langfuse==2.60.10
 
 # LangChain
 langchain
