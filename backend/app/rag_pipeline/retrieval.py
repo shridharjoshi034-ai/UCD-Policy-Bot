@@ -127,6 +127,7 @@ class PolicyRAGPipeline:
             span.update(output={
                 "chunk_count": len(results),
                 "sources": [r["source_file_name"] for r in results if r["source_file_name"]],
+                "contexts": [r["text"] for r in results]
             })
             span.end()
 
@@ -177,7 +178,7 @@ class PolicyRAGPipeline:
         generation = trace.generation(name="ollama-generate", model=self.ollama_model_name, input=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]) if trace else None
         
         full_text = []
-        usage_details = {}
+        usage = {}
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
         try:
             response = requests.post(url, json=payload, stream=True)
@@ -196,9 +197,9 @@ class PolicyRAGPipeline:
                         full_text.append(content)
                         yield content
                     if data.get("done"):
-                        usage_details.update({
-                            "input_tokens": data.get("prompt_eval_count", 0),
-                            "output_tokens": data.get("eval_count", 0),
+                        usage.update({
+                            "input": data.get("prompt_eval_count", 0),
+                            "output": data.get("eval_count", 0),
                         })
             print("\n")
 
@@ -208,7 +209,7 @@ class PolicyRAGPipeline:
                 generation.update(level="ERROR", status_message=str(e))
         finally:
             if generation:
-                generation.end(output="".join(full_text),usage_details=usage_details)
+                generation.end(output="".join(full_text), usage=usage)
 
     def stream_answer(self, query_text : str):
         trace = self.langfuse.trace(name="chat_response", input={"question":query_text})
@@ -243,7 +244,11 @@ class PolicyRAGPipeline:
                     "title": file_name,
                     "source_url": "#"
                 })
-        trace.update(output={"answer":"".join(answer_parts),"citations":citations})
+        trace.update(output={
+            "answer": "".join(answer_parts),
+            "citations": citations,
+            "contexts": [chunk["text"] for chunk in chunks]
+        })
         yield {"type": "final", "citations": citations}
 
     def check_greeting(self, query_text: str) -> Optional[str]:
