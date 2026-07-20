@@ -46,8 +46,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import mimetypes
-import os
 import re
 import tempfile
 import time
@@ -58,7 +56,6 @@ import pymupdf4llm
 import requests
 import urllib3
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 from supabase import create_client, Client
 
 try:
@@ -72,7 +69,6 @@ except Exception:
     fitz = None
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-load_dotenv()
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -91,9 +87,22 @@ BASE_DIR = Path(".")
 INDEX_FILE = BASE_DIR / "index.json"  # sync-state only — no scraped content lives locally
 
 # ── Supabase config ───────────────────────────────────────────────────────────
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]          # service_role key (bypasses storage RLS)
-SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "policybot-docs")
+# Credentials live directly in this file (no .env). Fill these in with your
+# real values from Supabase: Settings → API.
+#
+# ⚠️ WARNING: this means the service_role key — which bypasses all Storage
+# security rules — is now plain text inside this file. If this file is ever
+# committed to a git repo (even a private one, even briefly), the key is
+# compromised: rotate it immediately in Supabase (Settings → API → Reset
+# service_role key) and remove it from git history, since deleting the
+# commit later does not remove it from history.
+#
+# If this repo is shared with teammates or is ever made public, add this
+# exact filename to .gitignore instead of committing it with real values.
+
+SUPABASE_URL = "https://yuzqjgzitfrjoflpjahq.supabase.co"   # <-- your Project URL
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1enFqZ3ppdGZyam9mbHBqYWhxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDQ3NjQwMCwiZXhwIjoyMTAwMDUyNDAwfQ.nQvFkj2FxYFPfyrPbqiNMyoWpFB46Zrk8dIpK9FAQFk"            # <-- Settings → API → service_role
+SUPABASE_BUCKET = "Bucket"               # <-- exact bucket name from Storage
 
 BUCKET_PDF_FOLDER = "pdfs"
 BUCKET_MD_FOLDER = "markdown"
@@ -106,6 +115,36 @@ def get_supabase() -> Client:
     if _supabase_client is None:
         _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _supabase_client
+
+
+def validate_credentials() -> None:
+    """
+    Fail fast, with a clear message, if the key is malformed or rejected —
+    rather than discovering it 403 by 403 after scraping 20 PDFs.
+    """
+    key_parts = SUPABASE_KEY.split(".")
+    if len(key_parts) != 3 or any(not p for p in key_parts):
+        raise RuntimeError(
+            "SUPABASE_KEY does not look like a valid JWT (expected 3 dot-separated "
+            "parts, e.g. 'xxxxx.yyyyy.zzzzz').\n"
+            "This is almost always caused by an incomplete or corrupted copy-paste:\n"
+            "  - Re-copy the FULL service_role key from Supabase: Settings → API\n"
+            "  - Make sure no line break was inserted (the key is one long line)\n"
+            "  - Make sure there are no extra quotes or spaces around it in the script\n"
+        )
+
+    try:
+        get_supabase().storage.from_(SUPABASE_BUCKET).list()
+    except Exception as e:
+        raise RuntimeError(
+            f"Supabase rejected the credentials/bucket during a startup check: {e}\n"
+            "Check that:\n"
+            "  - SUPABASE_KEY is the service_role key (not anon), copied in full\n"
+            "  - SUPABASE_BUCKET matches the exact bucket name in Storage\n"
+            "  - SUPABASE_URL matches Settings → API → Project URL exactly\n"
+        ) from e
+
+    log.info("Supabase credentials OK — bucket is reachable.")
 
 
 def upload_to_supabase(bucket_folder: str, filename: str, data: bytes, content_type: str) -> str:
@@ -213,6 +252,24 @@ def sha256_of_url(url: str) -> str | None:
         return None
     finally:
         r.close()
+
+
+def _safe_unlink(path: Path, retries: int = 5, delay: float = 0.3) -> None:
+    """
+    Delete a temp file, retrying briefly on Windows if another process (e.g.
+    a lingering handle inside pymupdf4llm/fitz) still has it open. Logs a
+    warning rather than crashing if it truly can't be deleted — a leftover
+    OS temp file is harmless, unlike crashing mid-run.
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == retries:
+                log.warning(f"    Could not delete temp file {path} (still locked) — leaving it in OS temp dir")
+                return
+            time.sleep(delay)
 
 
 def count_pdf_pages(pdf_path: Path) -> int | None:
@@ -509,7 +566,7 @@ def sync_and_process(discovered: list[dict], index: dict) -> tuple[dict, dict]:
         try:
             md_text = pdf_to_markdown(tmp_path, detail_url, label)
         finally:
-            tmp_path.unlink(missing_ok=True)  # never leave the PDF on local disk
+            _safe_unlink(tmp_path)  # never leave the PDF on local disk (retries if Windows still has it open)
 
         if not md_text:
             log.warning(f"    SKIP markdown (empty conversion): {pdf_filename}")
@@ -613,7 +670,6 @@ def _scrape_guide_page(url: str, title: str) -> str:
 
     soup = BeautifulSoup(r.text, "html.parser")
 
-    intro_lines: list[str] = []
     h1 = soup.find("h1")
     page_title = h1.get_text(strip=True) if h1 else title
 
@@ -859,6 +915,8 @@ def main() -> None:
     log.info("=" * 60)
     log.info("UCD PolicyBot Scraper — Governance PDFs + Student Guides → Supabase Storage")
     log.info("=" * 60)
+
+    validate_credentials()  # fail fast, before wasting time scraping, if creds are bad
 
     index = load_index()
     log.info(f"Existing index: {len(index)} entries")
