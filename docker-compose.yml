@@ -15,6 +15,8 @@ services:
     extra_hosts:
       # Allow backend to connect to host's Ollama instance
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - langfuse-server
 
   frontend:
     build:
@@ -24,3 +26,31 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+
+  langfuse-server:
+    image: langfuse/langfuse:2
+    depends_on:
+      - langfuse-db
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=mysecret
+      - SALT=mysalt
+      - ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
+      - TELEMETRY_ENABLED=false
+
+  langfuse-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=langfuse
+    ports:
+      - "5432:5432"
+    volumes:
+      - langfuse_data:/var/lib/postgresql/data
+
+volumes:
+  langfuse_data:
