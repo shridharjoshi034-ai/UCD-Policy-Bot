@@ -29,7 +29,7 @@ export default function InputBox({ onSend }) {
       />
 
       <button className="send-btn" onClick={handleSend}>
-        Send
+       ➤
       </button>
     </div>
   );
