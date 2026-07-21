@@ -1,15 +1,28 @@
-import { ComposerPrimitive, WebSpeechDictationAdapter } from "@assistant-ui/react";
+import { ComposerPrimitive, WebSpeechDictationAdapter, useAui } from "@assistant-ui/react";
 import "../styles/InputBox.css";
 
 const dictationSupported = WebSpeechDictationAdapter.isSupported();
 
 export default function InputBox() {
+  const aui = useAui();
+
+  // While a response is still streaming, assistant-ui's own Enter handler
+  // deliberately no-ops instead of calling preventDefault(), so the keypress
+  // falls through to the textarea and inserts a newline. Swallow it here too
+  // so Enter is a no-op (not "insert newline") whenever sending is blocked.
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey && aui.thread().getState().isRunning) {
+      e.preventDefault();
+    }
+  };
+
   return (
     <ComposerPrimitive.Root className="input-wrapper">
       <ComposerPrimitive.Input
         className="input-box"
         placeholder="Ask your question..."
         rows={1}
+        onKeyDown={handleKeyDown}
       />
 
       {dictationSupported && (
