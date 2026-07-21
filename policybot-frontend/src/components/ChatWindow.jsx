@@ -67,21 +67,17 @@ export default function ChatWindow() {
 
       {/* BODY */}
       {messages.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <h2 className="text-3xl font-bold mb-2">
-            Hey There, Welcome to UCD PolicyBot
-          </h2>
-
-          <p className="text-gray-500 mb-6 text-center">
-            Ask any academic or administrative question
-          </p>
-
-          <div className="w-full max-w-2xl">
-            <SuggestedQuestions onSelect={handleSend} />
-          </div>
-        </div>
+    <div className="flex-1 flex flex-col items-center justify-center px-4">
+      <div className="-translate-y-10 text-center">
+        <h2 className="text-2xl md:text-3xl font-semibold mb-3">Hey There, Welcome to UCD PolicyBot</h2>
+        <p className="text-gray-500 text-sm md:text-base mb-10">Ask any academic or administrative question</p>
+      </div>
+      <div className="w-full max-w-2xl mt-8">
+        <SuggestedQuestions onSelect={handleSend} />
+      </div>
+    </div>
       ) : (
-          <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll">
+          <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll scroll-smooth">
           <div className="max-w-4xl mx-auto">
             <MessageList messages={messages} />
           </div>
@@ -89,9 +85,22 @@ export default function ChatWindow() {
       )}
 
       {/* INPUT */}
-      <div className="p-4">
-        <InputBox onSend={handleSend} />
-      </div>
+    <div
+    className={started ? "p-4": "absolute bottom-1/2 translate-y-1/2 w-full"}>
+    <InputBox onSend={handleSend}/>
+    </div>
+      <div
+    className={`
+    transition-all duration-700 ease-in-out
+    ${
+    started
+    ?
+    "p-4"
+    :
+    "absolute bottom-1/2 translate-y-1/2 w-full"
+    }
+    `}
+    ></div>
     </div>
   );
 }

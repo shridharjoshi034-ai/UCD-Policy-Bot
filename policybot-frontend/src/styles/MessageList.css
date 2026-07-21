@@ -1,5 +1,6 @@
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 18px;
+  width: 100%;
 }
