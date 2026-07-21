@@ -6,6 +6,11 @@ const API_BASE = "http://localhost:8000";
 
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
+  const text = message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+  const citations = message.metadata?.custom?.citations;
 
   const speakMessage = () => {
     if (window.speechSynthesis.speaking) {
@@ -13,7 +18,8 @@ export default function MessageBubble({ message }) {
       return;
     }
 
-    const speech = new SpeechSynthesisUtterance(message.content);
+    const speech = new SpeechSynthesisUtterance(text);
+
     speech.rate = 1;
     speech.pitch = 1;
     speech.volume = 1;
@@ -77,39 +83,37 @@ export default function MessageBubble({ message }) {
     <div className={`bubble-row ${isUser ? "right" : "left"}`}>
       <div className={`bubble ${isUser ? "user" : "bot"}`}>
         <div className="markdown-body">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({ href, children, ...props }) => (
-                <a
-                  {...props}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {message.content}
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {text}
           </ReactMarkdown>
         </div>
 
         {!isUser && (
-          <>
-            <div className="bubble-actions">
-              <button
-                className="speak-btn"
-                onClick={speakMessage}
-                title={
-                  window.speechSynthesis.speaking
-                    ? "Stop reading"
-                    : "Read aloud"
-                }
-              >
-                Read aloud 🔊
-              </button>
+  <>
+    <div className="bubble-actions">
+      <button
+        className="speak-btn"
+        onClick={speakMessage}
+        title={
+          window.speechSynthesis.speaking
+            ? "Stop reading"
+            : "Read aloud"
+        }
+      >
+        Read aloud 🔊 
+      </button>
+    </div>
+
+    {citations && (
+      <div className="citations">
+        <div className="citations-title">Sources:</div>
+
+        {citations.length > 0 ? (
+          citations.map((c, i) => (
+            <div key={i} className="citation-item">
+              <a href={c.source_url} target="_blank" rel="noreferrer">
+                🔗 {c.title}
+              </a>
             </div>
 
             {message.citations && message.citations.length > 0 && (

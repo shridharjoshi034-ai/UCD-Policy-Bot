@@ -1,36 +1,39 @@
-import { useState } from "react";
+import { ComposerPrimitive, WebSpeechDictationAdapter } from "@assistant-ui/react";
 import "../styles/InputBox.css";
 
-export default function InputBox({ onSend }) {
-  const [text, setText] = useState("");
+const dictationSupported = WebSpeechDictationAdapter.isSupported();
 
-  const handleSend = () => {
-    if (!text.trim()) return;
-    onSend(text);
-    setText("");
-  };
-
-  
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // prevents newline on Enter
-      handleSend();
-    }
-  };
-
+export default function InputBox() {
   return (
-    <div className="input-wrapper">
-      <input
+    <ComposerPrimitive.Root className="input-wrapper">
+      <ComposerPrimitive.Input
         className="input-box"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown} 
         placeholder="Ask your question..."
+        rows={1}
       />
 
-      <button className="send-btn" onClick={handleSend}>
-       ➤
-      </button>
-    </div>
+      {dictationSupported && (
+        <>
+          <ComposerPrimitive.If dictation={false}>
+            <ComposerPrimitive.Dictate className="mic-btn" title="Ask by voice">
+              🎤
+            </ComposerPrimitive.Dictate>
+          </ComposerPrimitive.If>
+
+          <ComposerPrimitive.If dictation={true}>
+            <span className="dictation-preview">
+              <ComposerPrimitive.DictationTranscript />
+            </span>
+            <ComposerPrimitive.StopDictation className="mic-btn recording" title="Stop recording">
+              ⏹
+            </ComposerPrimitive.StopDictation>
+          </ComposerPrimitive.If>
+        </>
+      )}
+
+      <ComposerPrimitive.Send className="send-btn">
+        Send
+      </ComposerPrimitive.Send>
+    </ComposerPrimitive.Root>
   );
 }
