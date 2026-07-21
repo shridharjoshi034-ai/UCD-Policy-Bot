@@ -81,7 +81,7 @@ export default function ChatWindow() {
           </div>
         </div>
       ) : (
-          <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll">
+          <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll scroll-smooth">
           <div className="max-w-4xl mx-auto">
             <MessageList messages={messages} />
           </div>

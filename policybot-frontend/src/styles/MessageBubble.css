@@ -11,11 +11,11 @@
 }
 
 .bubble {
-  max-width: 70%;
-  padding: 10px 14px;
-  border-radius: 16px;
-  font-size: 14px;
-  line-height: 1.4;
+  max-width: 820px;
+  padding: 8px 20px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .bubble.user {
