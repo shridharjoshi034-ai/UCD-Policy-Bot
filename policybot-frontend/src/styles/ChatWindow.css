@@ -20,3 +20,22 @@
   scrollbar-color: rgba(140,140,140,.7) transparent;
 }
 
+.message-fade-mask {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 96px,
+    black calc(100% - 36px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 96px,
+    black calc(100% - 36px),
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+}
+

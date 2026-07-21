@@ -27,14 +27,20 @@ export default function ChatWindow() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div
-    className={`h-screen flex flex-col transition-colors duration-300 ${
+    className={`h-screen relative flex flex-col transition-colors duration-300 ${
       darkMode
         ? "bg-[#0F172A] text-[#E5E7EB]"
         : "bg-[#F8FAFC] text-[#111827]"
     }`}
   >
         {/* HEADER */}
-        <div className="flex items-center gap-4 p-4 ">
+        <header
+          className={`absolute top-0 inset-x-0 z-20 flex items-center gap-4 p-4 backdrop-blur-md border-b transition-colors duration-300 ${
+            darkMode
+              ? "bg-[#0F172A]/60 border-white/10"
+              : "bg-[#F8FAFC]/70 border-black/5"
+          }`}
+        >
           <img
               src={ucdLogo}
               alt="UCD Logo"
@@ -67,12 +73,12 @@ export default function ChatWindow() {
           >
             Theme
           </button>
-        </div>
+        </header>
 
-        <ThreadPrimitive.Root className="flex-1 flex flex-col min-h-0">
+        <ThreadPrimitive.Root className="relative flex-1 min-h-0">
           {/* BODY */}
           {messages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
               <h2 className="text-3xl font-bold mb-2">
                 Hey There, Welcome to UCD PolicyBot
               </h2>
@@ -86,15 +92,15 @@ export default function ChatWindow() {
               </div>
             </div>
           ) : (
-            <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-6 chat-scroll">
-              <div className="max-w-4xl mx-auto">
+            <ThreadPrimitive.Viewport className="absolute inset-0 overflow-y-auto px-4 chat-scroll message-fade-mask">
+              <div className="max-w-4xl mx-auto pt-32 pb-40">
                 <MessageList />
               </div>
             </ThreadPrimitive.Viewport>
           )}
 
           {/* INPUT */}
-          <div className="p-4">
+          <div className="absolute bottom-6 inset-x-0 z-20 px-4">
             <InputBox />
           </div>
         </ThreadPrimitive.Root>
