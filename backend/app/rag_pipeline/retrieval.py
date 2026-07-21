@@ -1,15 +1,19 @@
 import os
 import re
 import hashlib
-from urllib import response
+import json
+import httpx
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator
 from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+
+from app.observability.tracer import get_tracer
 from FlagEmbedding import BGEM3FlagModel
 from qdrant_client import QdrantClient, models
 
-# Load environment variables
-load_dotenv()
+
 
 
 class PolicyRAGPipeline:
@@ -21,7 +25,7 @@ class PolicyRAGPipeline:
 
         # Model Configs from .env
         self.embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
-        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "gemma4:e2b")
+        self.ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "qwen2.5:1.5b")
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
         print(f"[Init] Embedding Model: {self.embedding_model_name}")
@@ -35,6 +39,9 @@ class PolicyRAGPipeline:
             url=self.connection_url,
             api_key=self.api_key,
         )
+
+        #Initialize langfuse client
+        self.langfuse = get_tracer()
 
     def close(self):
         """Cleanly closes the underlying Qdrant client network connections."""
@@ -66,8 +73,10 @@ class PolicyRAGPipeline:
             self,
             query_text: str,
             limit: int = 5,
-            file_id_filter: Optional[str] = None
+            file_id_filter: Optional[str] = None,
+            trace = None
     ) -> List[Dict[str, Any]]:
+        span = trace.span(name="retrieve-chunks", input={"query":query_text,"limit":limit}) if trace else None
         """Executes concurrent Dense + Sparse hybrid retrieval utilizing native RRF inside Qdrant."""
         dense_vec, sparse_idx, sparse_vals = self._process_query_vectors(query_text)
 
@@ -114,9 +123,17 @@ class PolicyRAGPipeline:
                 "h2": point.payload.get("Header 2"),
             })
 
+        if span:
+            span.update(output={
+                "chunk_count": len(results),
+                "sources": [r["source_file_name"] for r in results if r["source_file_name"]],
+                "contexts": [r["text"] for r in results]
+            })
+            span.end()
+
         return results
 
-    def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]):
+    def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]], trace=None) -> Generator[str, None, None]:
         """Constructs context template and handles generation stream via Ollama."""
 
         # Compile retrieved chunks into structural context block
@@ -152,9 +169,16 @@ class PolicyRAGPipeline:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "stream": True
+            "stream": True,
+            "options": {
+                "temperature": 0.1
+            }
         }
 
+        generation = trace.generation(name="ollama-generate", model=self.ollama_model_name, input=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]) if trace else None
+        
+        full_text = []
+        usage = {}
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
         try:
             response = requests.post(url, json=payload, stream=True)
@@ -169,30 +193,44 @@ class PolicyRAGPipeline:
                     import json
                     data = json.loads(chunk_json)
                     content = data.get("message", {}).get("content", "")
-                    # print(content, end="", flush=True)
                     if content:
+                        full_text.append(content)
                         yield content
+                    if data.get("done"):
+                        usage.update({
+                            "input": data.get("prompt_eval_count", 0),
+                            "output": data.get("eval_count", 0),
+                        })
             print("\n")
 
         except requests.exceptions.RequestException as e:
             print(f"\nFailed to connect or communicate with Ollama instance: {e}")
-        
+            if generation:
+                generation.update(level="ERROR", status_message=str(e))
+        finally:
+            if generation:
+                generation.end(output="".join(full_text), usage=usage)
 
     def stream_answer(self, query_text : str):
+        trace = self.langfuse.trace(name="chat_response", input={"question":query_text})
         """Streams answer from Ollama to the frontend"""
         
         greeting_response = self.check_greeting(query_text)
         if greeting_response:
+            trace.update(output={"answer": greeting_response})
             yield {"type": "token", "text": greeting_response}
             yield {"type": "final", "citations": []}
             return
 
-        chunks = self.retrieve(query_text=query_text, limit=3)
+        chunks = self.retrieve(query_text=query_text, limit=5, trace=trace)
 
         # Frontend can show count of chunks found for user feedback
         yield{"type" : "chunks_found", "count" : len(chunks)}
 
-        for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
+        answer_parts = []
+
+        for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks, trace=trace):
+            answer_parts.append(token)
             yield {"type": "token", "text": token}
 
         # Format citations from unique source files
@@ -206,7 +244,11 @@ class PolicyRAGPipeline:
                     "title": file_name,
                     "source_url": "#"
                 })
-
+        trace.update(output={
+            "answer": "".join(answer_parts),
+            "citations": citations,
+            "contexts": [chunk["text"] for chunk in chunks]
+        })
         yield {"type": "final", "citations": citations}
 
     def check_greeting(self, query_text: str) -> Optional[str]:
@@ -220,8 +262,8 @@ class PolicyRAGPipeline:
             )
         return None
 
-if __name__ == "__main__":
-    # Instantiate the unified system pipeline
+async def main():
+    """Async entry point for testing the pipeline locally."""
     pipeline = PolicyRAGPipeline()
 
     try:
@@ -229,7 +271,7 @@ if __name__ == "__main__":
 
         # 1. Check for basic greeting first
         greeting_response = pipeline.check_greeting(query)
-        
+
         if greeting_response:
             print(f"\n--- Generating Pre-written Greeting Response ---")
             print(greeting_response)
@@ -237,10 +279,16 @@ if __name__ == "__main__":
         else:
             # 2. Execute Retrieval
             chunks = pipeline.retrieve(query_text=query, limit=10)
-    
-            # 3. Execute Local Text Generation
-            pipeline.generate_answer(query_text=query, retrieved_chunks=chunks)
+
+            # 3. Execute Local Text Generation (now async)
+            for token in pipeline.generate_answer(query_text=query, retrieved_chunks=chunks):
+                print(token, end="", flush=True)
 
     finally:
-        # 3. Always close connections cleanly before exit
+        # Always close connections cleanly before exit
         pipeline.close()
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
