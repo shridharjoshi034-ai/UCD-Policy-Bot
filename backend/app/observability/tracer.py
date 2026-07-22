@@ -1,11 +1,8 @@
-from langfuse import Langfuse
-
-# Initialize the centralized Langfuse client
-langfuse_client = Langfuse()
+from langfuse import get_client
 
 def get_tracer():
     """
     Returns the initialized Langfuse client.
     Can be expanded later to wrap specific tracing logic.
     """
-    return langfuse_client
+    return get_client()

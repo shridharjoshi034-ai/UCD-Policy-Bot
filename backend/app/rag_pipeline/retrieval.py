@@ -3,18 +3,15 @@ import re
 import hashlib
 import json
 import httpx
-import requests
-from typing import List, Dict, Any, Optional, Generator
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from dotenv import load_dotenv
+from FlagEmbedding import BGEM3FlagModel
+from qdrant_client import QdrantClient, models
+
 # Load environment variables
 load_dotenv()
 
 from app.observability.tracer import get_tracer
-from FlagEmbedding import BGEM3FlagModel
-from qdrant_client import QdrantClient, models
-
-
-
 
 class PolicyRAGPipeline:
     def __init__(self, collection_name: str = "ucd_policies"):
@@ -40,7 +37,7 @@ class PolicyRAGPipeline:
             api_key=self.api_key,
         )
 
-        #Initialize langfuse client
+        # Initialize langfuse client
         self.langfuse = get_tracer()
 
     def close(self):
@@ -73,10 +70,8 @@ class PolicyRAGPipeline:
             self,
             query_text: str,
             limit: int = 5,
-            file_id_filter: Optional[str] = None,
-            trace = None
+            file_id_filter: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        span = trace.span(name="retrieve-chunks", input={"query":query_text,"limit":limit}) if trace else None
         """Executes concurrent Dense + Sparse hybrid retrieval utilizing native RRF inside Qdrant."""
         dense_vec, sparse_idx, sparse_vals = self._process_query_vectors(query_text)
 
@@ -123,17 +118,9 @@ class PolicyRAGPipeline:
                 "h2": point.payload.get("Header 2"),
             })
 
-        if span:
-            span.update(output={
-                "chunk_count": len(results),
-                "sources": [r["source_file_name"] for r in results if r["source_file_name"]],
-                "contexts": [r["text"] for r in results]
-            })
-            span.end()
-
         return results
 
-    def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]], trace=None) -> Generator[str, None, None]:
+    async def generate_answer(self, query_text: str, retrieved_chunks: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         """Constructs context template and handles generation stream via Ollama."""
 
         # Compile retrieved chunks into structural context block
@@ -175,81 +162,89 @@ class PolicyRAGPipeline:
             }
         }
 
-        generation = trace.generation(name="ollama-generate", model=self.ollama_model_name, input=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]) if trace else None
-        
         full_text = []
         usage = {}
+
         print(f"\n--- Generating Answer via {self.ollama_model_name} ---")
         try:
-            response = requests.post(url, json=payload, stream=True)
-            if not response.ok:
-                print("Ollama error:", response.text)
-            response.raise_for_status()
+            with self.langfuse.start_as_current_observation(name="ollama-generate", as_type="generation", model=self.ollama_model_name) as generation:
+                generation.update(input=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+                try:
+                    async with httpx.AsyncClient(timeout=None) as client:
+                        async with client.stream("POST", url, json=payload) as response:
+                            if not response.is_success:
+                                body = await response.aread()
+                                print("Ollama error:", body.decode())
+                            response.raise_for_status()
 
-            for line in response.iter_lines():
-                if line:
-                    chunk_json = line.decode('utf-8')
-                    # Parse continuous JSON streaming frames out safely
-                    import json
-                    data = json.loads(chunk_json)
-                    content = data.get("message", {}).get("content", "")
-                    if content:
-                        full_text.append(content)
-                        yield content
-                    if data.get("done"):
-                        usage.update({
-                            "input": data.get("prompt_eval_count", 0),
-                            "output": data.get("eval_count", 0),
-                        })
-            print("\n")
-
-        except requests.exceptions.RequestException as e:
+                            async for line in response.aiter_lines():
+                                if line:
+                                    # Parse continuous JSON streaming frames out safely
+                                    data = json.loads(line)
+                                    content = data.get("message", {}).get("content", "")
+                                    if content:
+                                        full_text.append(content)
+                                        yield content
+                                    if data.get("done"):
+                                        usage.update({
+                                            "input": data.get("prompt_eval_count", 0),
+                                            "output": data.get("eval_count", 0),
+                                        })
+                    generation.update(output="".join(full_text), usage=usage)
+                    print("\n")
+                except Exception as e:
+                    generation.update(level="ERROR", status_message=str(e))
+                    raise
+        except httpx.HTTPError as e:
             print(f"\nFailed to connect or communicate with Ollama instance: {e}")
-            if generation:
-                generation.update(level="ERROR", status_message=str(e))
-        finally:
-            if generation:
-                generation.end(output="".join(full_text), usage=usage)
+            raise
+        except Exception as e:
+            raise
 
-    def stream_answer(self, query_text : str):
-        trace = self.langfuse.trace(name="chat_response", input={"question":query_text})
+    async def stream_answer(self, query_text: str) -> AsyncGenerator[dict, None]:
         """Streams answer from Ollama to the frontend"""
-        
-        greeting_response = self.check_greeting(query_text)
-        if greeting_response:
-            trace.update(output={"answer": greeting_response})
-            yield {"type": "token", "text": greeting_response}
-            yield {"type": "final", "citations": []}
-            return
+        with self.langfuse.start_as_current_observation(name="chat_response", as_type="span") as trace:
+            trace.update(input={"question": query_text})
 
-        chunks = self.retrieve(query_text=query_text, limit=5, trace=trace)
+            greeting_response = self.check_greeting(query_text)
+            if greeting_response:
+                trace.update(output={"answer": greeting_response})
+                yield {"type": "token", "text": greeting_response}
+                yield {"type": "final", "citations": []}
+                return
+
+        chunks = self.retrieve(query_text=query_text, limit=5)
 
         # Frontend can show count of chunks found for user feedback
-        yield{"type" : "chunks_found", "count" : len(chunks)}
+        yield {"type": "chunks_found", "count": len(chunks)}
 
         answer_parts = []
+        
+        try:
+            async for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks):
+                answer_parts.append(token)
+                yield {"type": "token", "text": token}
 
-        for token in self.generate_answer(query_text=query_text, retrieved_chunks=chunks, trace=trace):
-            answer_parts.append(token)
-            yield {"type": "token", "text": token}
-
-        # Format citations from unique source files
-        citations = []
-        seen_files = set()
-        for chunk in chunks:
-            file_name = chunk.get("source_file_name")
-            if file_name and file_name not in seen_files:
-                seen_files.add(file_name)
-                citations.append({
-                    "title": file_name,
-                    "source_url": "#"
-                })
-        trace.update(output={
-            "answer": "".join(answer_parts),
-            "citations": citations,
-            "contexts": [chunk["text"] for chunk in chunks]
-        })
-        yield {"type": "final", "citations": citations}
+            # Format citations from unique source files
+            citations = []
+            seen_files = set()
+            for chunk in chunks:
+                file_name = chunk.get("source_file_name")
+                if file_name and file_name not in seen_files:
+                    seen_files.add(file_name)
+                    citations.append({
+                        "title": file_name,
+                        "source_url": "#"
+                    })
+            trace.update(output={
+                "answer": "".join(answer_parts),
+                "citations": citations,
+                "contexts": [chunk["text"] for chunk in chunks]
+            })
+            yield {"type": "final", "citations": citations}
+        except Exception as e:
+            trace.update(level="ERROR", status_message=str(e))
+            yield {"type": "error", "message": "An error occurred during response generation."}
 
     def check_greeting(self, query_text: str) -> Optional[str]:
         """Checks if the query is a standard greeting and returns a pre-written response if so."""
@@ -281,7 +276,7 @@ async def main():
             chunks = pipeline.retrieve(query_text=query, limit=10)
 
             # 3. Execute Local Text Generation (now async)
-            for token in pipeline.generate_answer(query_text=query, retrieved_chunks=chunks):
+            async for token in pipeline.generate_answer(query_text=query, retrieved_chunks=chunks):
                 print(token, end="", flush=True)
 
     finally:

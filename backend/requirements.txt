@@ -18,7 +18,7 @@ FlagEmbedding
 qdrant-client
 
 # Observability
-langfuse==2.60.10
+langfuse>=4.0.0
 
 # LangChain
 langchain

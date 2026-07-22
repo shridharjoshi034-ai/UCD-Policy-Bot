@@ -60,6 +60,7 @@ def ingest():
     client = QdrantClient(
         url=connection_url,
         api_key=Qdrant_api_key,
+        timeout=60.0
     )
 
     collection_name = "ucd_policies"
@@ -121,7 +122,7 @@ def ingest():
 
             md_header_splits = markdown_splitter.split_text(md_content)
             char_splits = char_splitter.split_documents(md_header_splits)
-            print(len(char_splits)," + " , file_path)
+            print(len(char_splits)," + " , file_path, flush=True)
             embed_and_ingest(char_splits, model, client, source_file_id, md_file)
 
 
