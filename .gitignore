@@ -35,13 +35,10 @@ hf_models/
 *.onnx
 *.h5
 
-# Project Specific Data
-policies_pdfs/
-policies_mds/
-policies_mds_old/
-
-# Freebuff desktop data
-.freebuff/
+# Project Specific Data (Uncomment these if you do NOT want to track your PDFs/MDs in Git)
+# policies_pdfs/
+# policies_mds/
+# policies_mds_old/
 
 # ==========================================
 # FRONTEND (React, Next.js, Vue, etc.)
@@ -72,7 +69,6 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-nul
 
 # IDEs (VS Code, PyCharm, IntelliJ)
 .vscode/
@@ -89,3 +85,4 @@ nul
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+.claude

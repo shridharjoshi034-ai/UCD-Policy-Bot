@@ -1,62 +1,61 @@
 .suggestions {
-  background: rgba(17, 24, 39, 0.6); 
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-
-  padding: 14px;
-
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+width:100%;
+display:flex;
+flex-direction:column;
+align-items:center;
 }
 
-.title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 
-  color: rgba(255, 255, 255, 0.55);
-  margin-bottom: 10px;
+.suggestions-title {
+font-size:12px;
+font-weight:700;
+letter-spacing:.15em;
+margin-bottom:18px;
+color:#004077;
 }
 
-.list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+
+.suggestions-list {
+display:flex;
+flex-wrap:wrap;
+justify-content:center;
+gap:12px;
+max-width:650px;
 }
 
-.list button {
-  font-size: 12px;
-  padding: 8px 12px;
 
-  border-radius: 999px;
 
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-
-  color: rgba(255, 255, 255, 0.78);
-
-  cursor: pointer;
-
-  transition: all 0.18s ease;
+.suggestion-pill {
+padding:10px 18px;
+border-radius:999px;
+background:#E5E7EB;
+border:1px solid #D1D5DB;
+color:#374151;
+font-size:14px;
+cursor:pointer;
+transition:
+background .2s ease,
+transform .2s ease,
+border .2s ease;
 }
 
-/* hover effect */
-.list button:hover {
-  background: rgba(59, 130, 246, 0.12); /* soft blue tint */
-  border-color: rgba(59, 130, 246, 0.35);
-  color: #dbeafe;
 
-  transform: translateY(-1px);
+
+.suggestion-pill:hover {
+background:#A3CCEE;
+border-color:#007DB8;
+transform:translateY(-2px);
 }
 
-.list button:active {
-  transform: scale(0.98);
+.dark .suggestion-pill {
+background:#1F2937;
+border-color:#374151;
+color:#E5E7EB;
 }
 
-.list button:focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.6);
-  outline-offset: 2px;
+
+
+.dark .suggestion-pill:hover {
+background:#004077;
+color:white;
 }

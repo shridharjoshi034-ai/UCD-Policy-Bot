@@ -2,24 +2,33 @@
 fastapi
 uvicorn
 pydantic
-requests
 httpx
+requests
 python-dotenv
 
 # PDF Processing
 pymupdf4llm
 
 # AI Embeddings (Local)
-fastembed
+sentence-transformers
+torch
+FlagEmbedding
 
 # Vector Storage
 qdrant-client
 
-# LangChain (for text splitting)
+# Observability
+langfuse==2.60.10
+
+# LangChain
 langchain
-langchain-text-splitters
+langchain-community
+langchain-qdrant
 
 # Scraping / Converting
 beautifulsoup4
 markdownify
 urllib3
+
+# Supabase
+supabase

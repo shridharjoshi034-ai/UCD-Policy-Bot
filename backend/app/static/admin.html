@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolicyBot Admin Dashboard</title>
+<style>
+  /* ── Light theme (default) ───────────────────────────────── */
+  :root {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text2: #64748b;
+    --text3: #94a3b8;
+    --accent: #6366f1;
+    --accent2: #4f46e5;
+    --accent-light: #eef2ff;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #d97706;
+    --orange: #ea580c;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
+    --transition: 180ms ease;
+    --terminal-bg: #1e293b;
+    --terminal-text: #e2e8f0;
+  }
+
+  /* ── Dark theme ──────────────────────────────────────────── */
+  [data-theme="dark"] {
+    --bg: #0b0f19;
+    --surface: #151a28;
+    --surface2: #1c2335;
+    --border: #262e40;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --accent-light: #1e1b4b;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --shadow: 0 4px 24px rgba(0,0,0,.4);
+    --terminal-bg: #0a0d14;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background var(--transition), color var(--transition);
+  }
+
+  /* ── Header ──────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    transition: background var(--transition);
+  }
+  .header .logo {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-right: auto;
+  }
+  .header .badge {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .header .badge.error { background: var(--red); }
+  .header .badge.ok { background: var(--green); }
+
+  /* ── Theme toggle ────────────────────────────────────────── */
+  .theme-toggle {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--transition);
+    font-size: .85rem;
+    color: var(--text2);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--text); }
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  /* ── Main layout ─────────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  .sidebar {
+    width: 230px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 16px 12px;
+    gap: 4px;
+    transition: background var(--transition);
+  }
+  .sidebar .section-title {
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text3);
+    padding: 8px 10px 4px;
+    margin-top: 8px;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: .875rem;
+    transition: all var(--transition);
+    text-align: left;
+    width: 100%;
+  }
+  .tab-btn:hover { background: var(--surface2); color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .tab-btn svg { width:18px; height:18px; flex-shrink:0; }
+
+  /* ── Content area ────────────────────────────────────────── */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tab-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    gap: 20px;
+  }
+  .tab-panel.active { display: flex; }
+
+  /* ── Status bar ──────────────────────────────────────────── */
+  .status-bar {
+    padding: 8px 24px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: .8rem;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    transition: background var(--transition);
+  }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.disconnected { background: var(--red); }
+
+  /* ── Cards ───────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    transition: background var(--transition);
+  }
+  .card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 svg { width:20px; height:20px; color: var(--accent2); }
+
+  /* ── Form elements ───────────────────────────────────────── */
+  .form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 160px;
+  }
+  .form-group label {
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+  }
+  .form-group input, .form-group select {
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .875rem;
+    transition: border var(--transition);
+  }
+  .form-group input:focus { outline:none; border-color: var(--accent); }
+
+  /* ── Buttons ─────────────────────────────────────────────── */
+  .btn {
+    padding: 9px 18px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent2); transform: translateY(-1px); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; transform: translateY(-1px); }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover:not(:disabled) { background: #059669; transform: translateY(-1px); }
+  .btn-orange { background: var(--orange); color: #fff; }
+  .btn-orange:hover:not(:disabled) { background: #ea580c; transform: translateY(-1px); }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .btn-outline:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: .75rem; }
+
+  /* ── File table ──────────────────────────────────────────── */
+  .file-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+  }
+  .file-table th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .7rem;
+  }
+  .file-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table tr:hover td { background: var(--surface2); }
+  .file-row-actions { display: flex; gap: 6px; }
+  .file-icon { color: var(--accent2); }
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text3);
+  }
+  .spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid var(--text3);
+    border-top-color: var(--accent2);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── Upload zone ─────────────────────────────────────────── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    background: var(--surface2);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .upload-zone svg { width: 40px; height: 40px; color: var(--text3); margin-bottom: 8px; }
+  .upload-zone p { color: var(--text2); font-size: .9rem; }
+  .upload-zone .small { color: var(--text3); font-size: .75rem; margin-top: 4px; }
+
+  /* ── Terminal ────────────────────────────────────────────── */
+  .terminal {
+    background: var(--terminal-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    font-size: .8rem;
+    line-height: 1.55;
+    overflow-y: auto;
+    padding: 16px;
+    flex: 1;
+    min-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #e2e8f0;
+  }
+  .terminal .log-line { padding: 1px 0; }
+  .terminal .log-info  { color: #93c5fd; }
+  .terminal .log-warning { color: #fcd34d; }
+  .terminal .log-error { color: #fca5a5; }
+  .terminal .log-debug { color: #94a3b8; }
+  .terminal .prompt { color: #34d399; user-select:none; }
+
+  /* ── Toast ───────────────────────────────────────────────── */
+  .toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    padding: 12px 20px;
+    border-radius: var(--radius-sm);
+    font-size: .85rem;
+    font-weight: 500;
+    animation: slideIn .25s ease;
+    box-shadow: var(--shadow);
+    max-width: 400px;
+  }
+  .toast.success { background: #065f46; color: #d1fae5; }
+  .toast.error { background: #7f1d1d; color: #fecaca; }
+  .toast.info { background: #1e3a5f; color: #dbeafe; }
+  @keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+  /* ── Responsive ──────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .tab-btn span { display: none; }
+    .form-row { flex-direction: column; }
+    .main { flex-direction: column; }
+    .sidebar { flex-direction: row; overflow-x: auto; width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; }
+    .sidebar .section-title { display: none; }
+  }
+
+  /* ── Progress bar ────────────────────────────────────────── */
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar .fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    animation: progressPulse 1.5s ease-in-out infinite;
+    width: 100%;
+  }
+  @keyframes progressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div class="header">
+  <div class="logo">⚡ PolicyBot Admin</div>
+  <div class="badge error" id="connectionBadge">CHECKING…</div>
+  <button class="btn btn-outline btn-sm" onclick="stopAllProcesses()" style="color:var(--red);border-color:var(--red);padding:4px 12px;font-size:.75rem" title="Signal running scrape/ingest tasks to stop">
+    ⏹ Stop All
+  </button>
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  </button>
+</div>
+
+<!-- ═══════════════ STATUS BAR ═══════════════ -->
+<div class="status-bar" id="statusBar">
+  <span class="status-dot disconnected" id="statusDot"></span>
+  <span id="statusLabel">Checking connection…</span>
+</div>
+
+<!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
+<div class="main">
+
+  <!-- ── SIDEBAR ─────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="section-title">Operations</div>
+    <button class="tab-btn active" data-tab="files">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <span>File Browser</span>
+    </button>
+    <button class="tab-btn" data-tab="upload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span>Upload</span>
+    </button>
+    <button class="tab-btn" data-tab="ingestion">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span>Ingestion</span>
+    </button>
+    <button class="tab-btn" data-tab="scraper">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span>Scraper</span>
+    </button>
+    <div class="section-title">Monitor</div>
+    <button class="tab-btn" data-tab="terminal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>Live Terminal</span>
+    </button>
+  </nav>
+
+  <!-- ── CONTENT ────────────────────────────── -->
+  <div class="content">
+
+    <!-- ═══ TAB: FILE BROWSER ═══ -->
+    <div class="tab-panel active" id="tab-files">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+          Bucket Files
+        </h2>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="listFiles()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSelectedFiles()" id="deleteSelectedBtn" disabled>
+            🗑️ Delete Selected (<span id="selectedCount">0</span>)
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAllFiles()" id="deleteAllBtn">
+            🗑️ Delete All Files
+          </button>
+          <span style="font-size:.8rem;color:var(--text3);align-self:center" id="fileCount"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="file-table">
+            <thead>
+              <tr><th style="width:36px"><input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this)" title="Select all"></th><th>File</th><th style="width:120px">Actions</th></tr>
+            </thead>
+            <tbody id="fileTableBody">
+              <tr><td colspan="3" class="empty-state">
+                Click Refresh to list files from Supabase
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="progress-bar" id="filesProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: UPLOAD ═══ -->
+    <div class="tab-panel" id="tab-upload">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload Files
+        </h2>
+        <div class="form-row" style="margin-bottom:16px">
+          <div class="form-group" style="max-width:200px">
+            <label>Target Folder (optional)</label>
+            <input type="text" id="uploadFolder" placeholder="e.g. policies/">
+          </div>
+        </div>
+        <div class="upload-zone" id="uploadZone"
+             onclick="document.getElementById('fileInput').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4M12 4L8 8M12 4l4 4"/><path d="M20 16v1a3 3 0 01-3 3H7a3 3 0 01-3-3v-1"/></svg>
+          <p>Drop files here or click to browse</p>
+          <p class="small">Supports PDF, MD, TXT, JSON, CSV</p>
+        </div>
+        <input type="file" id="fileInput" style="display:none" multiple
+               accept=".pdf,.md,.txt,.json,.csv,.docx,.xlsx" onchange="handleFileSelect(event)">
+        <div id="uploadPreview" style="margin-top:12px;font-size:.85rem;color:var(--text2)"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="uploadFiles(false)" id="uploadBtn">
+            ⬆️ Upload
+          </button>
+          <button class="btn btn-green" onclick="uploadFiles(true)" id="uploadConvertBtn">
+            ⬆️ Upload + Convert to MD
+          </button>
+        </div>
+        <div class="progress-bar" id="uploadProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: INGESTION ═══ -->
+    <div class="tab-panel" id="tab-ingestion">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Re-Ingestion Pipeline
+        </h2>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
+          Runs <code>ingestion.py</code> directly — reads local <code>policies_mds/</code> files,
+          re-chunks all documents, re-embeds them, and upserts into Qdrant.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-orange" onclick="triggerIngestion()" id="ingestBtn">
+            🔄 Re-Ingest All Documents
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="clearQdrant()">
+            🗑️ Clear Qdrant Only
+          </button>
+        </div>
+        <p style="font-size:.75rem;color:var(--yellow);margin-top:12px">
+          ⚠️ Make sure <code>policies_mds/</code> has the Markdown files you want to ingest.
+          Watch the Live Terminal tab for progress.
+        </p>
+        <div class="progress-bar" id="ingestProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: SCRAPER ═══ -->
+    <div class="tab-panel" id="tab-scraper">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          UCD Policy Scraper
+        </h2>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
+          Runs the full UCD scraper pipeline: governance PDFs + student guides → policies_mds/.
+          After scraping, you can optionally trigger ingestion to push everything to Qdrant.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="triggerScrape()" id="scrapeBtn">
+            🌐 Run Scraper
+          </button>
+          <button class="btn btn-orange" onclick="triggerScrapeAndIngest()" id="scrapeIngestBtn">
+            🌐🔄 Scraper + Re-Ingest
+          </button>
+        </div>
+        <div class="progress-bar" id="scrapeProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: LIVE TERMINAL ═══ -->
+    <div class="tab-panel" id="tab-terminal" style="padding-top:0">
+      <div class="card" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0">
+          <h2 style="margin:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Live Terminal
+          </h2>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="clearTerminal()">Clear</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleAutoScroll()" id="autoScrollBtn">📌 Auto-scroll: ON</button>
+          </div>
+        </div>
+        <div class="terminal" id="terminal">
+          <div class="log-line"><span class="prompt">$ </span><span class="log-info">Terminal ready — checking backend status…</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .content -->
+</div><!-- .main -->
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let selectedFiles = [];       // for upload
+let checkedFiles = new Set(); // for file-browser multi-select
+let autoScroll = true;
+let eventSource = null;
+
+// ── Theme management ─────────────────────────────────────────────────────────
+function getTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'light';
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('policybot_admin_theme', theme);
+  updateThemeIcon();
+}
+
+function toggleTheme() {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+function updateThemeIcon() {
+  const icon = document.getElementById('themeIcon');
+  if (getTheme() === 'dark') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
+}
+
+// Load saved theme (default light)
+(function() {
+  const saved = localStorage.getItem('policybot_admin_theme');
+  if (saved === 'dark') setTheme('dark');
+  else setTheme('light');
+})();
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+async function apiCall(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 300) || `HTTP ${res.status}: ${res.statusText}`);
+  }
+  if (!res.ok) throw new Error(data.message || data.detail || 'Request failed');
+  return data;
+}
+
+function toast(msg, type = 'info') {
+  const container = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+
+function showProgress(id) { document.getElementById(id).style.display = 'block'; }
+function hideProgress(id) { document.getElementById(id).style.display = 'none'; }
+function setBtnDisabled(id, disabled) { document.getElementById(id).disabled = disabled; }
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Connection status ────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const data = await fetch('/admin/supabase/status').then(r => r.json());
+    const ok = data.status === 'ok';
+    updateConnectionUI(ok, data.message || data.bucket || '');
+    if (ok) {
+      appendLogLine('info', '✅ Supabase connected — ' + data.message);
+    }
+  } catch (e) {
+    updateConnectionUI(false, 'Cannot reach backend');
+    appendLogLine('error', '⚠️ Cannot reach backend API');
+  }
+}
+
+function updateConnectionUI(isConnected, label) {
+  const badge = document.getElementById('connectionBadge');
+  const dot = document.getElementById('statusDot');
+  const statusLabel = document.getElementById('statusLabel');
+  if (isConnected) {
+    badge.className = 'badge ok';
+    badge.textContent = 'CONNECTED';
+    dot.className = 'status-dot connected';
+  } else {
+    badge.className = 'badge error';
+    badge.textContent = 'DISCONNECTED';
+    dot.className = 'status-dot disconnected';
+  }
+  statusLabel.textContent = label || (isConnected ? 'Connected' : 'Not connected');
+}
+
+// ── File operations ──────────────────────────────────────────────────────────
+async function listFiles() {
+  showProgress('filesProgress');
+  try {
+    const data = await apiCall('POST', '/admin/supabase/files');
+    renderFileTable(data.files || []);
+    document.getElementById('fileCount').textContent = `${data.files.length} file(s)`;
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideProgress('filesProgress');
+  }
+}
+
+function renderFileTable(files) {
+  const tbody = document.getElementById('fileTableBody');
+  if (files.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">📭 No files found in bucket</td></tr>';
+    return;
+  }
+  checkedFiles.clear();
+  document.getElementById('selectAllCb').checked = false;
+  updateSelectedCount();
+  tbody.innerHTML = files.map(f => {
+    const ext = f.split('.').pop().toLowerCase();
+    const icons = { pdf:'📄', md:'📝', txt:'📃', json:'{ }', csv:'📊', docx:'📄', xlsx:'📊' };
+    const icon = icons[ext] || '📁';
+    const esc = escapeHtml(f);
+    return `<tr>
+      <td><input type="checkbox" class="file-cb" value="${esc}" onchange="onFileCheck(this)"></td>
+      <td><span class="file-icon">${icon}</span> ${esc}</td>
+      <td>
+        <div class="file-row-actions">
+          <button class="btn btn-outline btn-sm" onclick="downloadFile('${esc}')">⬇️</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteFile('${esc}')">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+async function deleteFile(path) {
+  if (!confirm(`Delete "${path}"?`)) return;
+  try {
+    await apiCall('POST', '/admin/supabase/delete', { file_path: path });
+    toast(`Deleted: ${path}`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteAllFiles() {
+  if (!confirm('⚠️ This will delete ALL files from the Supabase bucket. Are you sure?')) return;
+  const typed = prompt('⚠️⚠️ This is irreversible! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Delete-all cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    const data = await apiCall('POST', '/admin/supabase/delete-all');
+    toast(`Deleted ${data.deleted_count} file(s)`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function downloadFile(path) {
+  try {
+    const data = await apiCall('POST', '/admin/supabase/download', { file_path: path });
+    window.open(data.url, '_blank');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Multi-select helpers ─────────────────────────────────────────────────────
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.file-cb').forEach(rowCb => {
+    rowCb.checked = cb.checked;
+    if (cb.checked) checkedFiles.add(rowCb.value);
+    else checkedFiles.delete(rowCb.value);
+  });
+  updateSelectedCount();
+}
+
+function onFileCheck(cb) {
+  if (cb.checked) checkedFiles.add(cb.value);
+  else checkedFiles.delete(cb.value);
+  document.getElementById('selectAllCb').checked =
+    checkedFiles.size === document.querySelectorAll('.file-cb').length;
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const count = checkedFiles.size;
+  document.getElementById('selectedCount').textContent = count;
+  document.getElementById('deleteSelectedBtn').disabled = count === 0;
+}
+
+async function deleteSelectedFiles() {
+  if (checkedFiles.size === 0) return;
+  const paths = Array.from(checkedFiles);
+  if (!confirm(`⚠️ Delete ${paths.length} selected file(s)?`)) return;
+  try {
+    const data = await apiCall('POST', '/admin/supabase/delete-batch', { file_paths: paths });
+    toast(`Deleted ${data.deleted_count} file(s)`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+['dragenter','dragover'].forEach(evt => {
+  uploadZone.addEventListener(evt, e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+});
+['dragleave','drop'].forEach(evt => {
+  uploadZone.addEventListener(evt, e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); });
+});
+uploadZone.addEventListener('drop', e => {
+  selectedFiles = Array.from(e.dataTransfer.files);
+  updateUploadPreview();
+});
+
+function handleFileSelect(event) {
+  selectedFiles = Array.from(event.target.files);
+  updateUploadPreview();
+}
+
+function updateUploadPreview() {
+  const preview = document.getElementById('uploadPreview');
+  if (selectedFiles.length === 0) { preview.innerHTML = ''; return; }
+  preview.innerHTML = `<strong>${selectedFiles.length} file(s) selected:</strong><br>` +
+    selectedFiles.map(f => `📎 ${f.name} (${formatSize(f.size)})`).join('<br>');
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+async function uploadFiles(convert) {
+  if (selectedFiles.length === 0) { toast('Select files first', 'error'); return; }
+
+  const endpoint = convert ? '/admin/supabase/upload-convert' : '/admin/supabase/upload';
+  const folder = document.getElementById('uploadFolder').value.trim();
+  showProgress('uploadProgress');
+  setBtnDisabled('uploadBtn', true);
+  setBtnDisabled('uploadConvertBtn', true);
+
+  let success = 0, fail = 0;
+  for (const file of selectedFiles) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', folder);
+
+      const res = await fetch(endpoint, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        success++;
+        toast(`Uploaded: ${file.name}${data.md_path ? ' + MD' : ''}`, 'success');
+      } else {
+        fail++;
+        toast(`${file.name}: ${data.message}`, 'error');
+      }
+    } catch (e) {
+      fail++;
+      toast(`${file.name}: ${e.message}`, 'error');
+    }
+  }
+
+  hideProgress('uploadProgress');
+  setBtnDisabled('uploadBtn', false);
+  setBtnDisabled('uploadConvertBtn', false);
+  if (success > 0) toast(`${success} file(s) uploaded, ${fail} failed`, fail ? 'info' : 'success');
+
+  selectedFiles = [];
+  document.getElementById('fileInput').value = '';
+  updateUploadPreview();
+}
+
+// ── Ingestion ────────────────────────────────────────────────────────────────
+async function triggerIngestion() {
+  setBtnDisabled('ingestBtn', true);
+  showProgress('ingestProgress');
+  try {
+    const data = await apiCall('POST', '/admin/ingest');
+    toast(data.message, 'info');
+    document.querySelector('[data-tab="terminal"]').click();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    setBtnDisabled('ingestBtn', false);
+    hideProgress('ingestProgress');
+  }
+}
+
+async function clearQdrant() {
+  if (!confirm('⚠️ Delete ALL vectors from Qdrant collection "ucd_policies"? This does NOT re-ingest.')) return;
+  try {
+    const data = await apiCall('POST', '/admin/qdrant/clear');
+    toast(data.message, 'info');
+    document.querySelector('[data-tab="terminal"]').click();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Scraper ──────────────────────────────────────────────────────────────────
+async function triggerScrape() {
+  setBtnDisabled('scrapeBtn', true);
+  showProgress('scrapeProgress');
+  try {
+    const data = await apiCall('POST', '/admin/scrape');
+    toast(data.message, 'info');
+    document.querySelector('[data-tab="terminal"]').click();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    setBtnDisabled('scrapeBtn', false);
+    hideProgress('scrapeProgress');
+  }
+}
+
+async function triggerScrapeAndIngest() {
+  setBtnDisabled('scrapeIngestBtn', true);
+  showProgress('scrapeProgress');
+  try {
+    const data = await apiCall('POST', '/admin/scrape-and-ingest');
+    toast(data.message, 'info');
+    document.querySelector('[data-tab="terminal"]').click();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    setBtnDisabled('scrapeIngestBtn', false);
+    hideProgress('scrapeProgress');
+  }
+}
+
+// ── Live Terminal (SSE) ──────────────────────────────────────────────────────
+function startLogStream() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/admin/logs/stream');
+
+  eventSource.onmessage = (event) => {
+    try {
+      const entry = JSON.parse(event.data);
+      appendLogLine(entry.level, entry.msg);
+    } catch (e) {
+      appendLogLine('info', event.data);
+    }
+  };
+
+  eventSource.onerror = () => {
+    appendLogLine('error', '⚠️ Log stream disconnected. Will retry…');
+  };
+}
+
+function appendLogLine(level, msg) {
+  const term = document.getElementById('terminal');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const cls = 'log-' + (level || 'info').toLowerCase();
+  line.innerHTML = `<span class="prompt">$ </span><span class="${cls}">${escapeHtml(msg)}</span>`;
+  term.appendChild(line);
+
+  if (autoScroll) {
+    term.scrollTop = term.scrollHeight;
+  }
+
+  while (term.children.length > 500) {
+    term.firstChild.remove();
+  }
+}
+
+function clearTerminal() {
+  const term = document.getElementById('terminal');
+  term.innerHTML = '<div class="log-line"><span class="prompt">$ </span><span class="log-debug">Terminal cleared.</span></div>';
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoScrollBtn').textContent = `📌 Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
+}
+
+// ── Stop all processes ──────────────────────────────────────────────────────
+async function stopAllProcesses() {
+  try {
+    const data = await apiCall('POST', '/admin/stop');
+    toast(data.message, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+startLogStream();
+checkStatus();
+</script>
+
+</body>
+</html>

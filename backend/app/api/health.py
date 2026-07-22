@@ -26,9 +26,11 @@ async def health_qdrant():
     if not qdrant_url:
         return {"status" : "not configured", "service" : "qdrant", "message" : "Qdrant_url is not set"}
     
-    try:
-        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
-        client.get_collections()
+    try : 
+        
+        
+        client = QdrantClient(url = qdrant_url, api_key = qdrant_api_key)
+        client.get_collections()   
 
         return {"status" : "ok", "service" : "qdrant"}
     except Exception as e : 
@@ -48,8 +50,8 @@ async def health_llm():
 
         # Check if Ollama service is reachable
         response = requests.get(
-            f"{ollama_base_url}/api/tags",
-            timeout=5
+            f"{ollama_base_url}/api/tags",      
+            timeout=5,
         )
         response.raise_for_status()         # Raise an error for bad responses
 
@@ -79,10 +81,10 @@ async def health_llm():
             "message": str(exc),
         }
     
-# Health check for RAG service (sync def so FastAPI runs it in a thread pool,
-# avoiding event-loop blocking from the synchronous Qdrant client).
+# Health check for RAG service
 @router.get("/rag", response_model=HealthResponse)
 def health_rag():
+
     client = None
 
     try:
@@ -109,6 +111,3 @@ def health_rag():
             "service": "rag-service",
             "message": str(e),
         }
-    finally:
-        if client is not None:
-            client.close()
