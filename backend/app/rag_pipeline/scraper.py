@@ -295,10 +295,24 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
         log.error(f"pymupdf4llm failed on {pdf_path}: {e}")
         return ""
 
+    used_fallback = False
+    if not body:
+        # ── Fallback: try direct text extraction with fitz (PyMuPDF) ──────────
+        if fitz is not None:
+            try:
+                fitz_body = _extract_text_with_fitz(pdf_path)
+                if fitz_body:
+                    log.info(f"    Recovered {len(fitz_body):,} chars via fitz fallback for {pdf_path.name}")
+                    body = fitz_body
+                    used_fallback = True
+            except Exception as e:
+                log.warning(f"    fitz fallback also failed for {pdf_path.name}: {e}")
+
     if not body:
         return ""
 
     total_pages_value = total_pages if total_pages is not None else "unknown"
+    converter = "pymupdf+fitz_fallback" if used_fallback else "pymupdf4llm"
 
     front_matter = (
         "---\n"
@@ -307,7 +321,7 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
         f"file: {yaml_quote(pdf_path.name)}\n"
         f"total_pages: {yaml_quote(total_pages_value)}\n"
         "doc_type: governance_pdf\n"
-        "converter: pymupdf4llm\n"
+        f"converter: {yaml_quote(converter)}\n"
         "---\n\n"
         f"# {label}\n\n"
         f"> **Source:** [{source_url}]({source_url})  \n"
@@ -317,6 +331,23 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
     )
 
     return front_matter + body + "\n"
+
+
+def _extract_text_with_fitz(pdf_path: Path) -> str:
+    """Fallback: extract plain text page-by-page using PyMuPDF (fitz).
+    Returns empty string if no text can be extracted (image-only PDF)."""
+    if fitz is None:
+        return ""
+    pages_text: list[str] = []
+    with fitz.open(str(pdf_path)) as doc:
+        total = int(doc.page_count)
+        for i, page in enumerate(doc, start=1):
+            text = page.get_text().strip()
+            if text:
+                pages_text.append(f"###### Page {i} of {total}\n\n{text}")
+    if not pages_text:
+        return ""
+    return "\n\n---\n\n".join(pages_text)
 
 
 # ── Load / save index (stored in Supabase bucket) ──────────────────────────────
@@ -655,9 +686,17 @@ def _html_block_to_markdown(element) -> str:
 
 
 def _scrape_guide_page(url: str, title: str) -> str:
-    r = http_get(url)
+    # Try up to 2 times for flaky student guide pages (http_get already retries 3x internally)
+    r = None
+    for attempt in range(1, 3):
+        r = http_get(url, retries=1)
+        if r:
+            break
+        if attempt < 2:
+            log.warning(f"    Guide page attempt {attempt}/2 failed, retrying: {url}")
+            time.sleep(3)
     if not r:
-        log.warning(f"    Cannot fetch guide page: {url}")
+        log.warning(f"    Cannot fetch guide page after 2 attempts: {url}")
         return ""
 
     soup = BeautifulSoup(r.text, "html.parser")
