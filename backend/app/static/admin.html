@@ -573,6 +573,18 @@
           </button>
           <span style="font-size:.8rem;color:var(--text3);align-self:center" id="fileCount"></span>
         </div>
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="fileSearch" placeholder="🔍 Search files…"
+                 style="width:100%;max-width:420px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:.85rem;transition:border var(--transition)"
+                 oninput="filterFileTable()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+          <select id="fileTypeFilter" onchange="filterFileTable()"
+                  style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:.85rem;cursor:pointer;transition:border var(--transition)"
+                  onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            <option value="all">📁 All files</option>
+            <option value="pdf">📄 PDFs only</option>
+            <option value="md">📝 Markdown only</option>
+          </select>
+        </div>
         <div style="overflow-x:auto">
           <table class="file-table">
             <thead>
@@ -692,6 +704,7 @@ let adminToken = sessionStorage.getItem('policybot_admin_token') || '';
 // ── State ────────────────────────────────────────────────────────────────────
 let selectedFiles = [];
 let checkedFiles = new Set();
+let allFiles = [];
 let autoScroll = true;
 let eventSource = null;
 
@@ -918,9 +931,11 @@ async function listFiles() {
 }
 
 function renderFileTable(files) {
+  allFiles = files;
   const tbody = document.getElementById('fileTableBody');
   if (files.length === 0) {
     tbody.innerHTML = '<tr><td colspan="3" class="empty-state">📭 No files found in bucket</td></tr>';
+    document.getElementById('fileSearch').value = '';
     return;
   }
   checkedFiles.clear();
@@ -931,7 +946,7 @@ function renderFileTable(files) {
     const icons = { pdf:'📄', md:'📝', txt:'📃', json:'{ }', csv:'📊', docx:'📄', xlsx:'📊' };
     const icon = icons[ext] || '📁';
     const esc = escapeHtml(f);
-    return `<tr ondblclick="openFileOnSupabase('${esc}')" title="Double-click to open on Supabase">
+    return `<tr class="file-row" data-filename="${esc}" ondblclick="openFileOnSupabase('${esc}')" title="Double-click to open on Supabase">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="file-cb" value="${esc}" onchange="onFileCheck(this)"></td>
       <td><span class="file-icon">${icon}</span> ${esc}</td>
       <td onclick="event.stopPropagation()">
@@ -942,12 +957,62 @@ function renderFileTable(files) {
       </td>
     </tr>`;
   }).join('');
+  filterFileTable();
+}
+
+function filterFileTable() {
+  const q = (document.getElementById('fileSearch').value || '').toLowerCase().trim();
+  const filter = document.getElementById('fileTypeFilter').value;
+  document.querySelectorAll('#fileTableBody .file-row').forEach(row => {
+    const name = (row.dataset.filename || '').toLowerCase();
+    const ext = name.split('.').pop();
+    const matchesSearch = !q || name.includes(q);
+    const matchesType = filter === 'all' || ext === filter;
+    row.style.display = (matchesSearch && matchesType) ? '' : 'none';
+  });
+}
+
+function findPairedFile(path) {
+  // Given pdfs/foo.pdf → look for markdown/foo.md (and vice versa)
+  const parts = path.split('/');
+  if (parts.length < 2) return null;
+  const folder = parts[0];
+  const filename = parts.slice(1).join('/');
+  const dotIdx = filename.lastIndexOf('.');
+  if (dotIdx === -1) return null;
+  const base = filename.substring(0, dotIdx);
+  const ext = filename.substring(dotIdx + 1).toLowerCase();
+
+  // Only match across the two known scraper folders
+  let pairedPath = null;
+  if (ext === 'pdf' && folder === 'pdfs') {
+    pairedPath = `markdown/${base}.md`;
+  } else if (ext === 'md' && folder === 'markdown') {
+    pairedPath = `pdfs/${base}.pdf`;
+  }
+  if (!pairedPath) return null;
+  return allFiles.includes(pairedPath) ? pairedPath : null;
 }
 
 function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 async function deleteFile(path) {
-  if (!confirm(`Delete "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
+  let pairedPath = findPairedFile(path);
+  if (pairedPath) {
+    const ext = path.split('.').pop().toLowerCase();
+    const pairExt = pairedPath.split('.').pop().toUpperCase();
+    const msg = `Delete "${path}"?\n\nA matching ${pairExt} file also exists:\n  → ${pairedPath}\n\nAlso delete the paired ${pairExt} file?`;
+    const includePair = confirm(msg);
+    if (!includePair && !confirm(`Delete ONLY "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
+    if (includePair) {
+      try {
+        const pairData = await apiCall('POST', '/admin/supabase/delete', { file_path: pairedPath });
+        toast(`Deleted: ${pairedPath} (${pairData.qdrant_chunks_deleted} chunks removed)`, 'success');
+      } catch (e) { toast(`Failed to delete paired file ${pairedPath}: ${e.message}`, 'error'); }
+    }
+  } else {
+    if (!confirm(`Delete "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
+  }
   try {
     const data = await apiCall('POST', '/admin/supabase/delete', { file_path: path });
     toast(`Deleted: ${path} (${data.qdrant_chunks_deleted} chunks removed)`, 'success');
@@ -1070,8 +1135,35 @@ async function downloadSelectedFiles() {
 
 async function deleteSelectedFiles() {
   if (checkedFiles.size === 0) return;
-  const paths = Array.from(checkedFiles);
-  if (!confirm(`⚠️ Delete ${paths.length} selected file(s)?\nThis will also remove their Qdrant chunks.`)) return;
+  let paths = Array.from(checkedFiles);
+
+  // Check for paired files among the selection
+  const pairedPaths = new Set();
+  const alreadySelected = new Set(paths);
+  for (const p of paths) {
+    const pair = findPairedFile(p);
+    if (pair && !alreadySelected.has(pair) && !pairedPaths.has(pair)) {
+      pairedPaths.add(pair);
+    }
+  }
+
+  let msg = `⚠️ Delete ${paths.length} selected file(s)?\nThis will also remove their Qdrant chunks.`;
+  if (pairedPaths.size > 0) {
+    msg += `\n\nAlso found ${pairedPaths.size} matching pair(s) not selected:\n`;
+    for (const pp of pairedPaths) {
+      msg += `  → ${pp}\n`;
+    }
+    msg += `\nInclude these paired files in the delete?`;
+    const includePairs = confirm(msg);
+    if (includePairs) {
+      paths = paths.concat(Array.from(pairedPaths));
+    } else if (!confirm(`Delete ONLY the ${paths.length} selected file(s)?`)) {
+      return;
+    }
+  } else {
+    if (!confirm(msg)) return;
+  }
+
   try {
     const data = await apiCall('POST', '/admin/supabase/delete-batch', { file_paths: paths });
     toast(`Deleted ${data.deleted_count} file(s) (${data.qdrant_chunks_deleted} chunks removed)`, 'success');

@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from app.api import chat, health, sources, admin
 from app.observability.tracer import get_tracer
 

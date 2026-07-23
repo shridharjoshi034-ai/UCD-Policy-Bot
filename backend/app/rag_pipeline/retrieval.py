@@ -2,7 +2,6 @@ import os
 import re
 import hashlib
 import json
-import httpx
 import requests
 from typing import List, Dict, Any, Optional, Generator
 from dotenv import load_dotenv
@@ -10,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.observability.tracer import get_tracer
+from app.services import storage_service
 from FlagEmbedding import BGEM3FlagModel
 from qdrant_client import QdrantClient, models
 
@@ -189,8 +189,6 @@ class PolicyRAGPipeline:
             for line in response.iter_lines():
                 if line:
                     chunk_json = line.decode('utf-8')
-                    # Parse continuous JSON streaming frames out safely
-                    import json
                     data = json.loads(chunk_json)
                     content = data.get("message", {}).get("content", "")
                     if content:
@@ -212,12 +210,16 @@ class PolicyRAGPipeline:
                 generation.end(output="".join(full_text), usage=usage)
 
     def stream_answer(self, query_text : str):
-        trace = self.langfuse.trace(name="chat_response", input={"question":query_text})
         """Streams answer from Ollama to the frontend"""
+        try:
+            trace = self.langfuse.trace(name="chat_response", input={"question":query_text})
+        except Exception:
+            trace = None
         
         greeting_response = self.check_greeting(query_text)
         if greeting_response:
-            trace.update(output={"answer": greeting_response})
+            if trace:
+                trace.update(output={"answer": greeting_response})
             yield {"type": "token", "text": greeting_response}
             yield {"type": "final", "citations": []}
             return
@@ -233,22 +235,45 @@ class PolicyRAGPipeline:
             answer_parts.append(token)
             yield {"type": "token", "text": token}
 
-        # Format citations from unique source files
+        # Format citations from unique source files with Supabase signed URLs
+        # Prefer PDF versions over markdown — users want to see the original document
         citations = []
         seen_files = set()
         for chunk in chunks:
             file_name = chunk.get("source_file_name")
             if file_name and file_name not in seen_files:
                 seen_files.add(file_name)
+                # Reconstruct the Supabase storage path from the filename
+                ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+                if ext == "pdf":
+                    storage_path = f"pdfs/{file_name}"
+                elif ext == "md":
+                    # Try to find the corresponding PDF version first
+                    base_name = file_name.rsplit(".", 1)[0]
+                    pdf_path = f"pdfs/{base_name}.pdf"
+                    if storage_service.file_exists(pdf_path):
+                        storage_path = pdf_path
+                        file_name = f"{base_name}.pdf"  # Show PDF name in citation
+                    else:
+                        storage_path = f"markdown/{file_name}"
+                else:
+                    storage_path = file_name
+                # Use signed URL (works with private buckets) with 1-hour expiry
+                try:
+                    open_url = storage_service.create_signed_url(storage_path, expires_in=3600)
+                except Exception:
+                    open_url = storage_service.get_public_url(storage_path)
                 citations.append({
                     "title": file_name,
-                    "source_url": "#"
+                    "source_url": open_url,
+                    "open_url": open_url,
                 })
-        trace.update(output={
-            "answer": "".join(answer_parts),
-            "citations": citations,
-            "contexts": [chunk["text"] for chunk in chunks]
-        })
+        if trace:
+            trace.update(output={
+                "answer": "".join(answer_parts),
+                "citations": citations,
+                "contexts": [chunk["text"] for chunk in chunks]
+            })
         yield {"type": "final", "citations": citations}
 
     def check_greeting(self, query_text: str) -> Optional[str]:

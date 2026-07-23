@@ -198,6 +198,13 @@ def _list_all_files(client: Client, bucket_name: str, prefix: str = "") -> list[
     return all_files
 
 
+def get_public_url(remote_path: str) -> str:
+    """Generate a public (permanent) URL for a file in the Supabase bucket."""
+    client = get_supabase_client()
+    bucket = get_bucket_name()
+    return client.storage.from_(bucket).get_public_url(remote_path)
+
+
 def create_signed_url(remote_path: str, expires_in: int = 300) -> str:
     """Generate a signed download URL valid for `expires_in` seconds."""
     client = get_supabase_client()

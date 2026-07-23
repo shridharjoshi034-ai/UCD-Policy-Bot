@@ -11,7 +11,6 @@ Background tasks run as subprocesses (not threads) for safe termination.
 import asyncio
 import io
 import json
-import logging
 import os
 import queue
 import subprocess
@@ -57,67 +56,15 @@ def _push_log(level: str, msg: str) -> None:
             evt.set()
 
 
-# ── Capture ALL stdout/stderr → live terminal ─────────────────────────────────
-class _StreamRedirect(io.StringIO):
-    """Redirects stdout/stderr to the SSE log queue, line by line."""
-
-    def __init__(self, level: str, original_stream):
-        super().__init__()
-        self._level = level
-        self._original = original_stream
-
-    def write(self, s: str) -> int:
-        if s and s.strip():
-            # Write to original stream, handling Unicode on Windows
-            try:
-                self._original.write(s)
-            except UnicodeEncodeError:
-                self._original.write(s.encode("ascii", errors="replace").decode("ascii"))
-            self._original.flush()
-            for line in s.rstrip().split("\n"):
-                stripped = line.rstrip("\r")
-                if stripped:
-                    _push_log(self._level, stripped)
-        return len(s)
-
-    def flush(self) -> None:
-        self._original.flush()
-
-
-_original_stdout = sys.stdout
-_original_stderr = sys.stderr
-sys.stdout = _StreamRedirect("info", _original_stdout)
-sys.stderr = _StreamRedirect("warning", _original_stderr)
-
-
-class _LogHandler(logging.Handler):
-    """Forwards all logging records to the SSE log queue."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            msg = self.format(record)
-            _push_log(record.levelname.lower(), msg)
-        except Exception:
-            pass
-
-
-_root_handler = _LogHandler()
-_root_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
-_root_logger = logging.getLogger()
-_root_logger.setLevel(logging.INFO)
-if _root_handler not in _root_logger.handlers:
-    _root_logger.addHandler(_root_handler)
-
-
 def _emit_log(level: str, msg: str) -> None:
-    """Explicit helper — pushes directly to the log queue."""
+    """Explicit helper — pushes directly to the log queue and prints to real stdout."""
     _push_log(level, msg)
-    # Also print to original stdout so it appears in the real terminal.
+    # Print to real stdout so it appears in the terminal.
     # Use errors='replace' to handle Unicode emoji on Windows (cp1252).
     try:
-        print(msg, file=_original_stdout)
+        print(msg)
     except UnicodeEncodeError:
-        print(msg.encode("ascii", errors="replace").decode("ascii"), file=_original_stdout)
+        print(msg.encode("ascii", errors="replace").decode("ascii"))
 
 
 # ── Active subprocess tracking (replaces unsafe ctypes thread killing) ────────

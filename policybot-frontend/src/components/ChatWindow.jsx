@@ -85,22 +85,13 @@ export default function ChatWindow() {
       )}
 
       {/* INPUT */}
-    <div
-    className={started ? "p-4": "absolute bottom-1/2 translate-y-1/2 w-full"}>
-    <InputBox onSend={handleSend}/>
-    </div>
       <div
-    className={`
-    transition-all duration-700 ease-in-out
-    ${
-    started
-    ?
-    "p-4"
-    :
-    "absolute bottom-1/2 translate-y-1/2 w-full"
-    }
-    `}
-    ></div>
+        className={`transition-all duration-700 ease-in-out ${
+          started ? "p-4" : "absolute bottom-1/2 translate-y-1/2 w-full"
+        }`}
+      >
+        <InputBox onSend={handleSend} />
+      </div>
     </div>
   );
 }
