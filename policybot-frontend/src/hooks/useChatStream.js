@@ -91,20 +91,13 @@ export default function useChatStream() {
         // FINAL RESPONSE
         if (eventName === "final") {
           setMessages((prev) => {
-            const updated = [...prev];
-
-            const last =
-              updated[updated.length - 1];
-
-            if (
-              last &&
-              last.role === "assistant"
-            ) {
-              last.citations =
-                data.citations || [];
-            }
-
-            return [...updated];
+            const updated = prev.map((msg, i) => {
+              if (i === prev.length - 1 && msg.role === "assistant") {
+                return { ...msg, citations: data.citations || [] };
+              }
+              return msg;
+            });
+            return updated;
           });
         }
 
