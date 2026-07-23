@@ -531,12 +531,29 @@ async def qdrant_stats():
         info = client.get_collection(collection_name)
         point_count = getattr(info, "points_count", 0)
 
+        # Count unique source_file_name values (distinct ingested files)
+        unique_files = 0
+        try:
+            unique_names = set()
+            scroll_result = client.scroll(
+                collection_name,
+                with_payload=["source_file_name"],
+                limit=10000,
+            )
+            for point in scroll_result[0]:
+                if point.payload and point.payload.get("source_file_name"):
+                    unique_names.add(point.payload["source_file_name"])
+            unique_files = len(unique_names)
+        except Exception:
+            pass
+
         return {
             "status": "ok",
             "collection": collection_name,
             "exists": True,
             "point_count": point_count,
-            "message": f"{point_count:,} vectors in '{collection_name}'",
+            "unique_files": unique_files,
+            "message": f"{point_count:,} vectors, {unique_files} files in '{collection_name}'",
         }
     except Exception as e:
         return {
@@ -544,6 +561,7 @@ async def qdrant_stats():
             "collection": "ucd_policies",
             "exists": False,
             "point_count": 0,
+            "unique_files": 0,
             "message": f"Qdrant unreachable: {e}",
         }
 

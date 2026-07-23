@@ -535,13 +535,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span>Upload</span>
     </button>
-    <button class="tab-btn" data-tab="ingestion">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-      <span>Ingestion</span>
-    </button>
-    <button class="tab-btn" data-tab="scraper">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <span>Scraper</span>
+    <button class="tab-btn" data-tab="operations">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span>Other Operations</span>
     </button>
     <div class="section-title">Monitor</div>
     <button class="tab-btn" data-tab="terminal">
@@ -626,37 +622,8 @@
       </div>
     </div>
 
-    <!-- ═══ TAB: INGESTION ═══ -->
-    <div class="tab-panel" id="tab-ingestion">
-      <div class="card">
-        <h2>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-          Re-Ingestion Pipeline
-        </h2>
-        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
-          Downloads ALL Markdown files from Supabase storage, re-chunks, re-embeds, and upserts into Qdrant.
-        </p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-orange" onclick="triggerIngestion()" id="ingestBtn">
-            🔄 Re-Ingest (Clear Qdrant → Ingest)
-          </button>
-          <button class="btn btn-danger btn-sm" onclick="clearQdrant()">
-            🗑️ Clear Qdrant Only
-          </button>
-          <button class="btn btn-danger btn-sm" onclick="deleteQdrantCollection()" id="deleteQdrantBtn">
-            💥 Delete Qdrant Collection
-          </button>
-        </div>
-        <p style="font-size:.75rem;color:var(--yellow);margin-top:12px">
-          ⚠️ Ingestion now reads Markdown files directly from Supabase storage.
-          Watch the Live Terminal tab for progress.
-        </p>
-        <div class="progress-bar" id="ingestProgress" style="display:none"><div class="fill"></div></div>
-      </div>
-    </div>
-
-    <!-- ═══ TAB: SCRAPER ═══ -->
-    <div class="tab-panel" id="tab-scraper">
+    <!-- ═══ TAB: OTHER OPERATIONS ═══ -->
+    <div class="tab-panel" id="tab-operations">
       <div class="card">
         <h2>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -664,7 +631,6 @@
         </h2>
         <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
           Runs the full UCD scraper pipeline: governance PDFs + student guides → Supabase Storage.
-          index.json is now stored in Supabase (not local disk).
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="triggerScrape()" id="scrapeBtn">
@@ -675,6 +641,25 @@
           </button>
         </div>
         <div class="progress-bar" id="scrapeProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Re-Ingestion
+        </h2>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
+          Downloads ALL Markdown files from Supabase storage, re-chunks, re-embeds, and upserts into Qdrant.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-orange" onclick="triggerIngestion()" id="ingestBtn">
+            🔄 Re-Ingest (Clear Qdrant → Ingest)
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQdrantCollection()" id="deleteQdrantBtn">
+            💥 Delete Qdrant Collection
+          </button>
+        </div>
+        <div class="progress-bar" id="ingestProgress" style="display:none"><div class="fill"></div></div>
       </div>
     </div>
 
@@ -884,7 +869,8 @@ async function fetchQdrantStats() {
     const label = document.getElementById('qdrantLabel');
     if (data.exists) {
       dot.className = 'status-dot connected';
-      label.textContent = `Qdrant: ${data.collection} · ${data.point_count.toLocaleString()} vectors`;
+      const files = data.unique_files || 0;
+      label.textContent = `Qdrant: ${data.collection} · ${data.point_count.toLocaleString()} vectors, ${files} files`;
     } else if (data.status === 'ok') {
       dot.className = 'status-dot disconnected';
       label.textContent = `Qdrant: ${data.collection} (empty)`;
@@ -1160,14 +1146,6 @@ async function triggerIngestion() {
     hideProgress('ingestProgress');
     setBtnDisabled('ingestBtn', false);
   }
-}
-
-async function clearQdrant() {
-  if (!confirm('Clear and recreate the Qdrant collection? Files in Supabase will NOT be deleted.')) return;
-  try {
-    await apiCall('POST', '/admin/qdrant/clear');
-    toast('Qdrant clear started', 'success');
-  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function emptySupabaseBucket() {
