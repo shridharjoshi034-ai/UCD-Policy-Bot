@@ -4,29 +4,27 @@ Admin Dashboard API Router
 Provides endpoints for Supabase CRUD operations, ingestion triggers,
 scraper control, and SSE-based live log streaming.
 
-All Supabase + Qdrant credentials are read from environment variables
-(.env file). No credentials are accepted in request bodies.
+Uses shared storage_service and document_services for all Supabase/Qdrant ops.
+Background tasks run as subprocesses (not threads) for safe termination.
 """
 
-import os
 import asyncio
-import ctypes
 import io
 import json
 import logging
+import os
 import queue
+import subprocess
 import sys
 import threading
 import time
 import tempfile
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Form, Request
+from fastapi import APIRouter, UploadFile, File, Form, Request, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel
-from typing import Optional
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -70,10 +68,12 @@ class _StreamRedirect(io.StringIO):
 
     def write(self, s: str) -> int:
         if s and s.strip():
-            # Also write to original stream so it still appears in the real terminal
-            self._original.write(s)
+            # Write to original stream, handling Unicode on Windows
+            try:
+                self._original.write(s)
+            except UnicodeEncodeError:
+                self._original.write(s.encode("ascii", errors="replace").decode("ascii"))
             self._original.flush()
-            # Push each non-empty line to the log queue
             for line in s.rstrip().split("\n"):
                 stripped = line.rstrip("\r")
                 if stripped:
@@ -84,13 +84,12 @@ class _StreamRedirect(io.StringIO):
         self._original.flush()
 
 
-# Install stdout/stderr capture (save originals first)
 _original_stdout = sys.stdout
 _original_stderr = sys.stderr
 sys.stdout = _StreamRedirect("info", _original_stdout)
-sys.stderr = _StreamRedirect("warning", _original_stderr)  # warning, not error — many libs write non-errors to stderr
+sys.stderr = _StreamRedirect("warning", _original_stderr)
 
-# ── Also capture all Python logging output ────────────────────────────────────
+
 class _LogHandler(logging.Handler):
     """Forwards all logging records to the SSE log queue."""
 
@@ -106,77 +105,90 @@ _root_handler = _LogHandler()
 _root_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
 _root_logger = logging.getLogger()
 _root_logger.setLevel(logging.INFO)
-# Guard against duplicate handlers on hot reload
 if _root_handler not in _root_logger.handlers:
     _root_logger.addHandler(_root_handler)
 
 
 def _emit_log(level: str, msg: str) -> None:
-    """Explicit helper — pushes directly to the log queue (also visible via stdout capture)."""
+    """Explicit helper — pushes directly to the log queue."""
     _push_log(level, msg)
-    # Also print to original stdout so it appears in the real terminal
-    print(msg, file=_original_stdout)
+    # Also print to original stdout so it appears in the real terminal.
+    # Use errors='replace' to handle Unicode emoji on Windows (cp1252).
+    try:
+        print(msg, file=_original_stdout)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", errors="replace").decode("ascii"), file=_original_stdout)
 
 
-# ── Global stop signal + active thread tracking ───────────────────────────────
-_stop_flag = threading.Event()
-_active_thread: Optional[threading.Thread] = None
-_active_lock = threading.Lock()
+# ── Active subprocess tracking (replaces unsafe ctypes thread killing) ────────
+_active_process: subprocess.Popen | None = None
+_process_lock = threading.Lock()
 
 
-def _is_stopped() -> bool:
-    """Check if the stop flag is set."""
-    return _stop_flag.is_set()
+def _read_subprocess_output(proc: subprocess.Popen, label: str) -> None:
+    """Read stdout/stderr from a subprocess concurrently using threads,
+    pushing every line to the SSE log.  Using two threads avoids the deadlock
+    that happens when a blocking readline() on one pipe starves the other."""
 
-
-def _kill_thread_immediately(thread: threading.Thread) -> bool:
-    """Raise SystemExit in the target thread, killing it at the next Python
-    bytecode boundary (typically within milliseconds). Returns True on success."""
-    tid = thread.ident
-    if tid is None:
-        return False
-    # ctypes.pythonapi.PyThreadState_SetAsyncExc raises an exception in the
-    # thread identified by its thread id. We raise SystemExit so cleanup
-    # handlers (finally/__exit__) still run.
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-        ctypes.c_ulong(tid), ctypes.py_object(SystemExit)
-    )
-    if res == 0:
-        return False  # invalid thread id
-    if res > 1:
-        # Somehow hit multiple threads — undo the damage by calling again with None
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(tid), None)
-        return False
-    return True
-
-
-def _start_tracked_thread(target_func) -> threading.Thread:
-    """Create and start a daemon thread that runs target_func under stop-tracking.
-    Registers the thread BEFORE starting to avoid a race window."""
-    def _wrapper():
+    def _drain(stream, level):
+        """Read *stream* line-by-line until EOF, pushing to the log."""
         try:
-            if _is_stopped():
-                _emit_log("warning", "🛑 Task aborted — stop signal received before start")
-                return
-            target_func()
-        except SystemExit:
-            _emit_log("warning", "🛑 Task terminated immediately by stop signal")
+            for line in iter(stream.readline, ""):
+                stripped = line.rstrip("\r\n")
+                if stripped:
+                    _push_log(level, f"[{label}] {stripped}")
         except Exception as e:
-            _emit_log("error", f"❌ Task failed: {e}")
-        finally:
-            with _active_lock:
-                global _active_thread
-                if _active_thread is threading.current_thread():
-                    _active_thread = None
+            _push_log("error", f"[{label}] Pipe read error: {e}")
 
-    t = threading.Thread(target=_wrapper, daemon=True)
-    with _active_lock:
-        _active_thread = t
-    t.start()
-    return t
+    threads = []
+    if proc.stdout:
+        t = threading.Thread(target=_drain, args=(proc.stdout, "info"), daemon=True)
+        t.start()
+        threads.append(t)
+    if proc.stderr:
+        t = threading.Thread(target=_drain, args=(proc.stderr, "warning"), daemon=True)
+        t.start()
+        threads.append(t)
+
+    # Wait for both drain threads to finish (both streams are fully consumed)
+    for t in threads:
+        t.join()
+
+
+def _run_in_subprocess(module_func: str, label: str) -> subprocess.Popen:
+    """Spawn a subprocess running the given Python module function.
+    e.g. module_func = 'app.rag_pipeline.scraper:main'
+    """
+    cmd = [
+        sys.executable, "-c",
+        f"import sys; sys.path.insert(0, '.'); "
+        f"from {module_func.split(':')[0]} import {module_func.split(':')[1]}; "
+        f"{module_func.split(':')[1]}()"
+    ]
+
+    _emit_log("info", f"🚀 Starting subprocess: {label}")
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent.parent,  # backend/ dir
+        env={**os.environ},
+    )
+
+    # Read output in background thread
+    reader = threading.Thread(target=_read_subprocess_output, args=(proc, label), daemon=True)
+    reader.start()
+
+    return proc
 
 
 # ── Request models ────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 
 class FilePathRequest(BaseModel):
     file_path: str
@@ -186,67 +198,45 @@ class BatchDeleteRequest(BaseModel):
     file_paths: list[str]
 
 
-# ── Helpers: read creds from .env ─────────────────────────────────────────────
+# ── Simple auth (local dev tool — not production security) ──────────────────
 
-def _get_supabase_client():
-    """Return an authenticated Supabase client using env vars."""
-    from supabase import create_client
-
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise RuntimeError(
-            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env"
-        )
-    return create_client(url, key)
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "12345"
+_admin_sessions: set[str] = set()  # simple token set
 
 
-def _get_bucket_name() -> str:
-    bucket = os.getenv("SUPABASE_BUCKET")
-    if not bucket:
-        raise RuntimeError("SUPABASE_BUCKET must be set in .env")
-    return bucket
+@router.post("/login")
+async def admin_login(req: LoginRequest):
+    """Simple username/password login for the admin dashboard."""
+    if req.username == ADMIN_USERNAME and req.password == ADMIN_PASSWORD:
+        token = f"session_{os.urandom(16).hex()}"
+        _admin_sessions.add(token)
+        _emit_log("info", f"✅ Admin login successful")
+        return {"status": "ok", "token": token}
+    _emit_log("warning", f"❌ Failed login attempt for user '{req.username}'")
+    return JSONResponse({"status": "error", "message": "Invalid credentials"}, status_code=401)
 
 
-def _list_all_files(supabase, bucket_name: str, prefix: str = "") -> list[str]:
-    """Recursively list all file paths in a Supabase bucket."""
-    all_files: list[str] = []
-    limit = 100
-    offset = 0
+@router.post("/logout")
+async def admin_logout(req: Request):
+    """Invalidate a session token."""
+    try:
+        body = await req.json()
+        token = body.get("token", "")
+        _admin_sessions.discard(token)
+    except Exception:
+        pass
+    return {"status": "ok"}
 
-    while True:
-        try:
-            resp = (
-                supabase.storage.from_(bucket_name)
-                .list(
-                    prefix,
-                    options={
-                        "limit": limit,
-                        "offset": offset,
-                        "sortBy": {"column": "name", "order": "asc"},
-                    },
-                )
-            )
-        except Exception as e:
-            _emit_log("error", f"List error at '{prefix}': {e}")
-            break
 
-        if not resp:
-            break
-
-        for item in resp:
-            if item.get("id") is None:  # folder
-                all_files.extend(
-                    _list_all_files(supabase, bucket_name, prefix + item["name"] + "/")
-                )
-            else:
-                all_files.append(prefix + item["name"])
-
-        if len(resp) < limit:
-            break
-        offset += limit
-
-    return all_files
+def _require_auth(request: Request):
+    """FastAPI dependency — rejects requests without a valid session token."""
+    token = request.headers.get("X-Admin-Token", "")
+    # Also check query param for SSE (EventSource can't send custom headers)
+    if not token:
+        token = request.query_params.get("token", "")
+    if not token or token not in _admin_sessions:
+        raise HTTPException(status_code=401, detail="Invalid or missing admin token")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -264,45 +254,31 @@ async def admin_dashboard():
 @router.get("/supabase/status")
 async def supabase_status():
     """Check whether Supabase credentials are configured and reachable."""
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    bucket = os.getenv("SUPABASE_BUCKET")
-
-    if not url or not key or not bucket:
-        missing = []
-        if not url: missing.append("SUPABASE_URL")
-        if not key: missing.append("SUPABASE_SERVICE_ROLE_KEY")
-        if not bucket: missing.append("SUPABASE_BUCKET")
-        return {
-            "status": "not_configured",
-            "message": f"Missing env vars: {', '.join(missing)}",
-        }
-
+    from app.services import storage_service
     try:
-        from supabase import create_client
-
-        client = create_client(url, key)
+        client = storage_service.get_supabase_client()
+        bucket = storage_service.get_bucket_name()
         client.storage.from_(bucket).list("", options={"limit": 1})
+        url = os.getenv("SUPABASE_URL", "")[:50]
         _emit_log("info", f"✅ Supabase connected — bucket '{bucket}' ready")
         return {
             "status": "ok",
             "message": f"Connected to bucket '{bucket}'",
             "bucket": bucket,
-            "url": url[:50] + "…",
+            "url": url + "…" if len(url) >= 50 else url,
         }
     except Exception as e:
         _emit_log("error", f"❌ Supabase connection failed: {e}")
         return {"status": "error", "message": str(e)}
 
 
-@router.post("/supabase/files")
+@router.post("/supabase/files", dependencies=[Depends(_require_auth)])
 async def supabase_list_files():
-    """Recursively list all files in the Supabase bucket (creds from .env)."""
+    """Recursively list all files in the Supabase bucket."""
+    from app.services import storage_service
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-        _emit_log("info", f"📂 Scanning bucket '{bucket}'…")
-        files = _list_all_files(client, bucket)
+        _emit_log("info", "📂 Scanning bucket…")
+        files = storage_service.list_files()
         _emit_log("info", f"📂 Found {len(files)} file(s)")
         return {"status": "ok", "files": files}
     except Exception as e:
@@ -310,24 +286,17 @@ async def supabase_list_files():
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/supabase/upload")
+@router.post("/supabase/upload", dependencies=[Depends(_require_auth)])
 async def supabase_upload(
     file: UploadFile = File(...),
     folder: str = Form(""),
 ):
-    """Upload a single file to Supabase storage (creds from .env)."""
+    """Upload a single file to Supabase storage."""
+    from app.services import storage_service
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-
         contents = await file.read()
         dest_path = (folder.rstrip("/") + "/" if folder else "") + (file.filename or "uploaded_file")
-
-        client.storage.from_(bucket).upload(
-            dest_path,
-            contents,
-            {"content-type": file.content_type or "application/octet-stream"},
-        )
+        storage_service.upload_file(dest_path, contents, file.content_type or "application/octet-stream")
         _emit_log("info", f"⬆️ Uploaded: {dest_path} ({len(contents):,} bytes)")
         return {"status": "ok", "path": dest_path, "size": len(contents)}
     except Exception as e:
@@ -335,16 +304,14 @@ async def supabase_upload(
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/supabase/upload-convert")
+@router.post("/supabase/upload-convert", dependencies=[Depends(_require_auth)])
 async def supabase_upload_and_convert(
     file: UploadFile = File(...),
     folder: str = Form(""),
 ):
-    """Upload a PDF, convert to Markdown via pymupdf4llm, store both (creds from .env)."""
+    """Upload a PDF, convert to Markdown, store both, AND ingest into Qdrant."""
+    from app.services import storage_service
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-
         contents = await file.read()
         filename = file.filename or "document.pdf"
         base = Path(filename).stem
@@ -354,9 +321,7 @@ async def supabase_upload_and_convert(
         md_path = prefix + base + ".md"
 
         # Upload original PDF
-        client.storage.from_(bucket).upload(
-            pdf_path, contents, {"content-type": "application/pdf"}
-        )
+        storage_service.upload_file(pdf_path, contents, "application/pdf")
         _emit_log("info", f"⬆️ Uploaded PDF: {pdf_path} ({len(contents):,} bytes)")
 
         # Convert PDF → Markdown
@@ -381,12 +346,17 @@ async def supabase_upload_and_convert(
             )
 
         # Upload Markdown
-        client.storage.from_(bucket).upload(
-            md_path,
-            md_text.encode("utf-8"),
-            {"content-type": "text/markdown; charset=utf-8"},
-        )
+        storage_service.upload_file(md_path, md_text.encode("utf-8"), "text/markdown")
         _emit_log("info", f"⬆️ Uploaded MD: {md_path} ({len(md_text):,} chars)")
+
+        # ── INGEST into Qdrant ────────────────────────────────────────────────
+        _emit_log("info", "🔄 Ingesting into Qdrant…")
+        try:
+            from app.rag_pipeline.ingestion import ingest_file
+            result = ingest_file(md_path)
+            _emit_log("info", f"✅ Ingested: {result['filename']} → {result['chunks']} chunks ({result['chars']:,} chars)")
+        except Exception as ingest_err:
+            _emit_log("warning", f"⚠️ Ingestion failed (file was uploaded): {ingest_err}")
 
         return {
             "status": "ok",
@@ -399,103 +369,136 @@ async def supabase_upload_and_convert(
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/supabase/delete-batch")
-async def supabase_delete_batch(req: BatchDeleteRequest):
-    """Delete multiple files from Supabase storage in a single batch call."""
-    try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-        client.storage.from_(bucket).remove(req.file_paths)
-        preview = ", ".join(req.file_paths[:5])
-        if len(req.file_paths) > 5:
-            preview += f" … and {len(req.file_paths) - 5} more"
-        _emit_log("info", f"🗑️ Batch deleted {len(req.file_paths)} file(s): {preview}")
-        return {"status": "ok", "deleted_count": len(req.file_paths)}
-    except Exception as e:
-        _emit_log("error", f"❌ Batch delete failed: {e}")
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
-
-
-@router.post("/supabase/delete")
+@router.post("/supabase/delete", dependencies=[Depends(_require_auth)])
 async def supabase_delete(req: FilePathRequest):
-    """Delete a single file from Supabase storage (creds from .env)."""
+    """Delete a single file from Supabase AND its Qdrant chunks (cascading)."""
+    from app.services.document_services import delete_document
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-        client.storage.from_(bucket).remove([req.file_path])
-        _emit_log("info", f"🗑️ Deleted: {req.file_path}")
-        return {"status": "ok", "deleted": req.file_path}
+        result = delete_document(req.file_path)
+        _emit_log("info",
+            f"🗑️ Deleted: {req.file_path} "
+            f"(Supabase: {result['supabase_deleted']}, Qdrant chunks: {result['qdrant_chunks_deleted']})"
+        )
+        return {"status": "ok", "deleted": req.file_path, **result}
     except Exception as e:
         _emit_log("error", f"❌ Delete failed: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/supabase/delete-all")
-async def supabase_delete_all():
-    """Delete all files from the Supabase bucket (use with caution!)."""
+@router.post("/supabase/download-batch", dependencies=[Depends(_require_auth)])
+async def supabase_download_batch(req: BatchDeleteRequest):
+    """Download multiple files as a ZIP archive."""
+    import zipfile
+    from fastapi.responses import Response
+    from app.services import storage_service
+
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-        files = _list_all_files(client, bucket)
-        _emit_log("warning", f"⚠️ Deleting ALL {len(files)} files from '{bucket}'…")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in req.file_paths:
+                try:
+                    file_bytes = storage_service.download_file(file_path)
+                    filename = file_path.split("/")[-1]
+                    zf.writestr(filename, file_bytes)
+                    _emit_log("info", f"📦 Added to ZIP: {file_path}")
+                except Exception as e:
+                    _emit_log("warning", f"⚠️ Skipping {file_path}: {e}")
+                    # Add an error placeholder so the user knows
+                    zf.writestr(
+                        f"_ERROR_{file_path.split('/')[-1]}.txt",
+                        f"Could not download: {e}"
+                    )
 
-        batch_size = 500
-        for i in range(0, len(files), batch_size):
-            batch = files[i : i + batch_size]
-            client.storage.from_(bucket).remove(batch)
-            _emit_log("info", f"🗑️ Deleted batch {i // batch_size + 1}: {len(batch)} files")
+        buf.seek(0)
+        _emit_log("info", f"✅ ZIP created with {len(req.file_paths)} file(s)")
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=policybot_files.zip",
+            },
+        )
+    except Exception as e:
+        _emit_log("error", f"❌ ZIP download failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
-        _emit_log("info", f"✅ All {len(files)} files deleted from Supabase")
-        return {"status": "ok", "deleted_count": len(files)}
+
+@router.post("/supabase/delete-batch", dependencies=[Depends(_require_auth)])
+async def supabase_delete_batch(req: BatchDeleteRequest):
+    """Delete multiple files from Supabase AND their Qdrant chunks (cascading)."""
+    from app.services.document_services import delete_documents
+    try:
+        result = delete_documents(req.file_paths)
+        preview = ", ".join(req.file_paths[:5])
+        if len(req.file_paths) > 5:
+            preview += f" … and {len(req.file_paths) - 5} more"
+        _emit_log("info",
+            f"🗑️ Batch deleted {len(req.file_paths)} file(s): {preview} "
+            f"(Supabase: {result['supabase_deleted']}, Qdrant chunks: {result['qdrant_chunks_deleted']})"
+        )
+        return {"status": "ok", "deleted_count": len(req.file_paths), **result}
+    except Exception as e:
+        _emit_log("error", f"❌ Batch delete failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@router.post("/supabase/delete-all", dependencies=[Depends(_require_auth)])
+async def supabase_delete_all():
+    """Delete ALL files from Supabase AND clear the Qdrant collection."""
+    from app.services.document_services import delete_all_documents
+    try:
+        _emit_log("warning", "⚠️ Deleting ALL documents from Supabase + Qdrant…")
+        result = delete_all_documents()
+        _emit_log("info",
+            f"✅ All documents deleted — "
+            f"Supabase: {result['supabase_deleted']} files, Qdrant cleared: {result['qdrant_cleared']}"
+        )
+        return {"status": "ok", **result}
     except Exception as e:
         _emit_log("error", f"❌ Delete-all failed: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/supabase/download")
+@router.post("/supabase/download", dependencies=[Depends(_require_auth)])
 async def supabase_download(req: FilePathRequest):
     """Generate a signed download URL for a file."""
+    from app.services import storage_service
     try:
-        client = _get_supabase_client()
-        bucket = _get_bucket_name()
-        url = client.storage.from_(bucket).create_signed_url(req.file_path, 300)
-        return {"status": "ok", "url": url.get("signedURL", url) if isinstance(url, dict) else url}
+        url = storage_service.create_signed_url(req.file_path, 3600)
+        return {"status": "ok", "url": url, "file_path": req.file_path}
     except Exception as e:
         _emit_log("error", f"❌ Download URL failed: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
 
 
-@router.post("/qdrant/clear")
+@router.post("/supabase/public-url", dependencies=[Depends(_require_auth)])
+async def supabase_public_url(req: FilePathRequest):
+    """Generate a signed URL for viewing a file (for double-click open / download)."""
+    from app.services import storage_service
+    try:
+        url = storage_service.create_signed_url(req.file_path, 3600)
+        return {"status": "ok", "url": url, "file_path": req.file_path}
+    except Exception as e:
+        _emit_log("error", f"❌ Signed URL failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@router.post("/qdrant/clear", dependencies=[Depends(_require_auth)])
 async def clear_qdrant():
-    """Drop and recreate the Qdrant 'ucd_policies' collection (creds from .env)."""
-    _emit_log("warning", "🗑️ Dropping Qdrant collection 'ucd_policies'…")
+    """Drop and recreate the Qdrant collection (no Supabase deletion)."""
+    _emit_log("warning", "🗑️ Dropping Qdrant collection…")
 
     def _run():
         try:
-            from qdrant_client import QdrantClient, models
-
+            from app.services.document_services import ensure_qdrant_collection
+            from qdrant_client import QdrantClient
             client = QdrantClient(
                 url=os.getenv("QDRANT_URL"),
                 api_key=os.getenv("QDRANT_API_KEY"),
             )
             client.delete_collection("ucd_policies")
             _emit_log("info", "✅ Dropped collection 'ucd_policies'")
-
-            client.create_collection(
-                collection_name="ucd_policies",
-                vectors_config=models.VectorParams(
-                    size=1024,
-                    distance=models.Distance.COSINE,
-                ),
-                sparse_vectors_config={
-                    "sparse": models.SparseVectorParams()
-                },
-            )
-            client.create_payload_index(
-                collection_name="ucd_policies",
-                field_name="source_file_id",
-                field_schema=models.PayloadSchemaType.KEYWORD,
-            )
+            ensure_qdrant_collection()
             _emit_log("info", "✅ Re-created empty collection 'ucd_policies'")
         except Exception as e:
             _emit_log("error", f"❌ Qdrant clear failed: {e}")
@@ -504,101 +507,300 @@ async def clear_qdrant():
     return {"status": "ok", "message": "Qdrant clear started — watch the live terminal"}
 
 
-@router.post("/stop")
-async def stop_all():
-    """Immediately kill any running background task and set the stop flag.
-    Uses ctypes to raise SystemExit in the active thread — terminates
-    within milliseconds. Call again to clear the flag."""
-    if _stop_flag.is_set():
-        _stop_flag.clear()
-        _emit_log("info", "🟢 Stop flag cleared — new tasks can run again")
-        return {"status": "ok", "message": "Stop flag cleared — tasks will run normally"}
+@router.get("/qdrant/stats")
+async def qdrant_stats():
+    """Return Qdrant collection name and vector/point count.
+    No auth required — this is a lightweight health-check metric."""
+    try:
+        from qdrant_client import QdrantClient
+        client = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        )
+        collection_name = "ucd_policies"
 
-    _stop_flag.set()
+        if not client.collection_exists(collection_name):
+            return {
+                "status": "ok",
+                "collection": collection_name,
+                "exists": False,
+                "point_count": 0,
+                "message": f"Collection '{collection_name}' not found",
+            }
 
-    with _active_lock:
-        t = _active_thread
+        info = client.get_collection(collection_name)
+        point_count = getattr(info, "points_count", 0)
 
-    if t is not None and t.is_alive():
-        killed = _kill_thread_immediately(t)
-        if killed:
-            _emit_log("warning", "🛑 Active task killed immediately via SystemExit injection")
+        return {
+            "status": "ok",
+            "collection": collection_name,
+            "exists": True,
+            "point_count": point_count,
+            "message": f"{point_count:,} vectors in '{collection_name}'",
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "collection": "ucd_policies",
+            "exists": False,
+            "point_count": 0,
+            "message": f"Qdrant unreachable: {e}",
+        }
+
+
+@router.post("/supabase/empty-bucket", dependencies=[Depends(_require_auth)])
+async def empty_supabase_bucket():
+    """Delete ALL files from the Supabase bucket WITHOUT touching Qdrant.
+    More targeted than delete-all (which also clears Qdrant)."""
+    from app.services import storage_service
+    try:
+        _emit_log("warning", "🗑️ Deleting ALL files from Supabase bucket (Qdrant untouched)…")
+        files = storage_service.list_files()
+        if files:
+            storage_service.delete_files(files)
+            _emit_log("info", f"✅ Deleted {len(files)} file(s) from Supabase bucket")
         else:
-            _emit_log("warning", "🛑 Stop flag set but unable to inject exception into active thread")
+            _emit_log("info", "ℹ️ Bucket already empty")
+        return {"status": "ok", "files_deleted": len(files)}
+    except Exception as e:
+        _emit_log("error", f"❌ Empty bucket failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@router.post("/qdrant/delete-collection", dependencies=[Depends(_require_auth)])
+async def delete_qdrant_collection():
+    """PERMANENTLY drop the Qdrant collection — does NOT recreate it.
+    More destructive than /qdrant/clear (which recreates an empty collection)."""
+    try:
+        _emit_log("warning", "💥 Permanently deleting Qdrant collection 'ucd_policies'…")
+        from qdrant_client import QdrantClient
+        client = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        )
+        client.delete_collection("ucd_policies")
+        _emit_log("info", "✅ Permanently deleted collection 'ucd_policies'")
+        return {"status": "ok", "message": "Qdrant collection permanently deleted"}
+    except Exception as e:
+        _emit_log("error", f"❌ Delete collection failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+# ── Stop All: kills subprocess first call, kills backend second call ──────────
+
+_stop_call_count = 0
+_stop_last_call = 0.0
+
+
+@router.post("/stop", dependencies=[Depends(_require_auth)])
+async def stop_all():
+    """
+    Stop All button:
+    - First call: kill the active subprocess (scraper/ingestion) via terminate() then kill()
+    - Second call within 3 seconds: force-exit the entire backend process (like Ctrl+C×2)
+    - Third+ call within 3 seconds: os._exit(1) immediately
+    """
+    global _active_process, _stop_call_count, _stop_last_call
+    from app.services import storage_service
+
+    now = time.time()
+
+    # Reset counter if last call was > 3 seconds ago
+    if now - _stop_last_call > 3.0:
+        _stop_call_count = 0
+    _stop_call_count += 1
+    _stop_last_call = now
+
+    if _stop_call_count == 1:
+        # First call: kill the subprocess
+        with _process_lock:
+            proc = _active_process
+
+        if proc is not None and proc.poll() is None:
+            _emit_log("warning", "🛑 Stopping active task (SIGTERM)…")
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+                _emit_log("info", "✅ Active task terminated gracefully")
+            except subprocess.TimeoutExpired:
+                _emit_log("warning", "🛑 Force-killing active task (SIGKILL)…")
+                proc.kill()
+                proc.wait()
+                _emit_log("info", "✅ Active task force-killed")
+            with _process_lock:
+                _active_process = None
+        else:
+            _emit_log("info", "ℹ️ No active task running — click again to stop backend")
+            return {"status": "ok", "message": "No active task. Click again within 3s to stop backend."}
+
+        return {"status": "ok", "message": "Active task killed. Click again within 3s to stop backend."}
+
+    elif _stop_call_count == 2:
+        # Second call: force exit the backend (os._exit works on all platforms)
+        _emit_log("warning", "🛑 Force-stopping backend…")
+        # Give SSE clients a moment to see the message
+        time.sleep(0.5)
+        os._exit(0)
+
     else:
-        _emit_log("warning", "🛑 Stop signal sent — no active task to kill (flag set for next task)")
+        # Third+ call: immediate force exit
+        _emit_log("error", "💥 Force-exiting backend immediately!")
+        time.sleep(0.3)
+        os._exit(1)
 
-    return {"status": "ok", "message": "Stop signal sent — active task killed if running"}
 
+# ── Scraper / Ingestion endpoints (subprocess-based) ──────────────────────────
 
-@router.post("/ingest")
+@router.post("/ingest", dependencies=[Depends(_require_auth)])
 async def trigger_ingestion():
-    """Run ingestion.py directly — reads local policies_mds/ → chunks → embeds → Qdrant."""
-    _emit_log("info", "🚀 Starting ingestion pipeline (ingestion.py)…")
+    """Run ingestion pipeline — FIRST drops+recreates Qdrant collection, THEN
+    downloads Markdown from Supabase, chunks, embeds, upserts into Qdrant."""
+    global _active_process
+    _emit_log("info", "🚀 Starting full re-ingestion pipeline…")
 
-    def _task():
-        from app.rag_pipeline import ingestion as ing_module
-        before = time.perf_counter()
-        ing_module.ingest()
-        elapsed = time.perf_counter() - before
-        _emit_log("info", f"✅ Ingestion complete in {elapsed:.1f}s")
+    # ── Check for already-running task (brief lock) ───────────────────────────
+    with _process_lock:
+        if _active_process is not None and _active_process.poll() is None:
+            _emit_log("warning", "⚠️ A task is already running. Stop it first.")
+            return {"status": "error", "message": "A task is already running"}
 
-    _start_tracked_thread(_task)
+    # ── Step 1: Clear Qdrant collection BEFORE ingestion (no lock needed) ────
+    _emit_log("warning", "🗑️ Step 1/2: Clearing Qdrant collection 'ucd_policies'…")
+    try:
+        from qdrant_client import QdrantClient
+        client = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        )
+        client.delete_collection("ucd_policies")
+        _emit_log("info", "✅ Dropped collection 'ucd_policies'")
+        # Recreate the empty collection so ingestion has somewhere to write
+        from app.services.document_services import ensure_qdrant_collection
+        ensure_qdrant_collection()
+        _emit_log("info", "✅ Re-created empty collection 'ucd_policies'")
+    except Exception as e:
+        _emit_log("error", f"❌ Qdrant clear failed: {e}")
+        return {"status": "error", "message": f"Qdrant clear failed: {e}"}
+
+    # ── Step 2: Run ingestion subprocess (brief lock for spawn) ──────────────
+    _emit_log("info", "🔄 Step 2/2: Ingesting all Markdown from Supabase…")
+    with _process_lock:
+        proc = _run_in_subprocess("app.rag_pipeline.ingestion:ingest", "ingestion")
+        _active_process = proc
+
+    # Background monitor
+    def _monitor():
+        global _active_process
+        proc.wait()
+        with _process_lock:
+            if _active_process is proc:
+                _active_process = None
+        if proc.returncode == 0:
+            _emit_log("info", "✅ Ingestion complete")
+        elif proc.returncode == -15 or proc.returncode == -9:
+            _emit_log("warning", "🛑 Ingestion was stopped")
+        else:
+            _emit_log("error", f"❌ Ingestion failed (exit code {proc.returncode})")
+
+    threading.Thread(target=_monitor, daemon=True).start()
     return {"status": "ok", "message": "Ingestion started — watch the live terminal"}
 
 
-@router.post("/scrape")
+@router.post("/scrape", dependencies=[Depends(_require_auth)])
 async def trigger_scrape():
-    """Run the UCD scraper (governance PDFs + student guides)."""
+    """Run the UCD scraper (governance PDFs + student guides → Supabase)."""
+    global _active_process
     _emit_log("info", "🌐 Starting scraper…")
 
-    def _task():
-        from app.rag_pipeline import scraper as scraper_module
-        before = time.perf_counter()
-        scraper_module.main()
-        elapsed = time.perf_counter() - before
-        _emit_log("info", f"✅ Scraper complete in {elapsed:.1f}s")
+    with _process_lock:
+        if _active_process is not None and _active_process.poll() is None:
+            _emit_log("warning", "⚠️ A task is already running. Stop it first.")
+            return {"status": "error", "message": "A task is already running"}
 
-    _start_tracked_thread(_task)
+        proc = _run_in_subprocess("app.rag_pipeline.scraper:main", "scraper")
+        _active_process = proc
+
+    def _monitor():
+        global _active_process
+        proc.wait()
+        with _process_lock:
+            if _active_process is proc:
+                _active_process = None
+        if proc.returncode == 0:
+            _emit_log("info", "✅ Scraper complete")
+        elif proc.returncode == -15 or proc.returncode == -9:
+            _emit_log("warning", "🛑 Scraper was stopped")
+        else:
+            _emit_log("error", f"❌ Scraper failed (exit code {proc.returncode})")
+
+    threading.Thread(target=_monitor, daemon=True).start()
     return {"status": "ok", "message": "Scraper started — watch the live terminal"}
 
 
-@router.post("/scrape-and-ingest")
+@router.post("/scrape-and-ingest", dependencies=[Depends(_require_auth)])
 async def trigger_scrape_and_ingest():
-    """Run scraper, then ingestion pipeline (full refresh). Stop flag checked between phases."""
-    _emit_log("info", "🌐🔄 Starting full scrape + re-ingest pipeline…")
+    """Run scraper, then ingestion pipeline (full refresh)."""
+    global _active_process
+    _emit_log("info", "🌐🔄 Starting full scrape + ingest pipeline…")
 
-    def _task():
-        from app.rag_pipeline import scraper as scraper_module
-        from app.rag_pipeline import ingestion as ing_module
+    with _process_lock:
+        if _active_process is not None and _active_process.poll() is None:
+            _emit_log("warning", "⚠️ A task is already running. Stop it first.")
+            return {"status": "error", "message": "A task is already running"}
 
-        _emit_log("info", "─" * 50)
-        _emit_log("info", "PHASE 1/2: Scraping UCD sources…")
-        before = time.perf_counter()
-        scraper_module.main()
-        elapsed = time.perf_counter() - before
-        _emit_log("info", f"✅ Scrape done ({elapsed:.1f}s)")
+    cmd = (
+        f"import sys; sys.path.insert(0, '.'); "
+        f"from app.rag_pipeline.scraper import main as scraper_main; "
+        f"from app.rag_pipeline.ingestion import ingest; "
+        f"import os; "
+        f"print('PHASE 1/2: Scraping…'); scraper_main(); "
+        f"print('PHASE 2/2: Ingesting…'); ingest(); "
+        f"print('Pipeline complete!')"
+    )
+    proc = subprocess.Popen(
+        [sys.executable, "-c", cmd],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent.parent,
+        env={**os.environ},
+    )
 
-        if _is_stopped():
-            _emit_log("warning", "🛑 Pipeline aborted — stop signal after scrape, skipping ingestion")
-            return
+    reader = threading.Thread(target=_read_subprocess_output, args=(proc, "scrape+ingest"), daemon=True)
+    reader.start()
 
-        _emit_log("info", "─" * 50)
-        _emit_log("info", "PHASE 2/2: Ingesting into Qdrant…")
-        before = time.perf_counter()
-        ing_module.ingest()
-        elapsed = time.perf_counter() - before
-        _emit_log("info", f"✅ Ingestion done ({elapsed:.1f}s)")
-        _emit_log("info", "─" * 50)
-        _emit_log("info", "🎉 Full pipeline complete!")
+    with _process_lock:
+        _active_process = proc
 
-    _start_tracked_thread(_task)
+    def _monitor():
+        global _active_process
+        proc.wait()
+        with _process_lock:
+            if _active_process is proc:
+                _active_process = None
+        if proc.returncode == 0:
+            _emit_log("info", "✅ Full pipeline complete")
+        elif proc.returncode == -15 or proc.returncode == -9:
+            _emit_log("warning", "🛑 Pipeline was stopped")
+        else:
+            _emit_log("error", f"❌ Pipeline failed (exit code {proc.returncode})")
+
+    threading.Thread(target=_monitor, daemon=True).start()
     return {"status": "ok", "message": "Scrape + Ingest started — watch the live terminal"}
 
 
+# ── SSE Log stream ────────────────────────────────────────────────────────────
+
 @router.get("/logs/stream")
-async def logs_stream(request: Request):
-    """Server-Sent Events stream for live terminal logs."""
+async def logs_stream(request: Request, token: str = ""):
+    """Server-Sent Events stream for live terminal logs.
+    Token is accepted via query param since EventSource can't send custom headers."""
+    # Validate token from query string (EventSource can't send headers)
+    if not token or token not in _admin_sessions:
+        # Return a single error event instead of streaming
+        async def _error_gen():
+            yield f"data: {json.dumps({'level': 'error', 'msg': 'Invalid or expired token. Please log in again.'})}\n\n"
+        return StreamingResponse(_error_gen(), media_type="text/event-stream")
 
     async def _event_generator():
         my_event = threading.Event()
@@ -606,7 +808,7 @@ async def logs_stream(request: Request):
             _log_listeners.append(my_event)
 
         try:
-            # Drain any backlog
+            # Drain backlog
             while True:
                 try:
                     entry = _log_queue.get_nowait()
@@ -618,7 +820,6 @@ async def logs_stream(request: Request):
                 if await request.is_disconnected():
                     break
 
-                # Drain queue
                 drained = False
                 while True:
                     try:
@@ -629,8 +830,6 @@ async def logs_stream(request: Request):
                         break
 
                 if not drained:
-                    # Poll every 500ms — threading.Event is already set by _push_log(),
-                    # so we just need a fast poll loop instead of blocking in run_in_executor
                     my_event.clear()
                     try:
                         await asyncio.wait_for(

@@ -17,13 +17,13 @@ Two-level crawl:
   Level 2 — each guide page → scrape all section content → write one .md per guide
 
 Sync logic (governance PDFs):
-  - SHA-256 hash of remote file vs hash stored in index.json
+  - SHA-256 hash of remote file vs hash stored in index.json (in Supabase)
   - New file     → download PDF (in-memory) + convert to Markdown + upload both to Supabase
   - Changed file → re-download + re-convert + overwrite both in Supabase
   - Unchanged    → skip (no network download of the PDF body, no upload)
 
 Sync logic (student guides):
-  - SHA-256 hash of scraped text vs hash stored in index.json
+  - SHA-256 hash of scraped text vs hash stored in index.json (in Supabase)
   - New/changed  → overwrite <slug>.md in the Supabase `markdown/` folder
   - Unchanged    → skip (no upload)
 
@@ -31,18 +31,14 @@ Storage layout (Supabase Storage bucket, no local files written for scraped cont
   <SUPABASE_BUCKET>/
     pdfs/          ← all downloaded PDFs (governance only)
     markdown/      ← all converted/scraped Markdowns (both sources)
-
-  index.json is still kept on local disk (small sync-state file, not scraped
-  content) — see note at the bottom if you'd rather keep that in Supabase too.
+    index.json     ← sync-state file stored in Supabase (NOT on local disk)
 
 PDF → Markdown conversion uses pymupdf4llm (needs a real file path, so each
 PDF is written to a temporary file only for the duration of the conversion,
 then deleted — it is never persisted under a project folder).
 HTML → Markdown conversion uses BeautifulSoup + markdownify.
 
-Credentials (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_BUCKET) are
-loaded from a .env file in the current working directory or the script
-directory.
+All Supabase operations go through the shared app.services.storage_service.
 """
 
 from __future__ import annotations
@@ -54,7 +50,9 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -62,7 +60,7 @@ import pymupdf4llm
 import requests
 import urllib3
 from bs4 import BeautifulSoup
-from supabase import create_client, Client
+from app.services import storage_service
 
 try:
     from markdownify import markdownify as md_convert
@@ -77,49 +75,6 @@ except Exception:
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# ── Load environment variables from .env file (if present) ────────────────────
-try:
-    from dotenv import load_dotenv, find_dotenv
-    _DOTENV_AVAILABLE = True
-except ImportError:
-    _DOTENV_AVAILABLE = False
-
-
-def load_environment():
-    """
-    Load SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_BUCKET from a .env
-    file. The .env file may reside in the current working directory, the script
-    directory, or any parent directory (using python-dotenv's find_dotenv if
-    available). If dotenv is not installed, a simple manual parser is used.
-    """
-    env_path = None
-
-    if _DOTENV_AVAILABLE:
-        env_path = find_dotenv(usecwd=True)
-        if env_path:
-            load_dotenv(env_path, override=False)
-    else:
-        # Manual fallback: look in CWD and then the script's directory.
-        candidate_dirs = [Path.cwd(), Path(__file__).resolve().parent]
-        for d in candidate_dirs:
-            candidate = d / ".env"
-            if candidate.exists():
-                env_path = candidate
-                break
-
-        if env_path:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    key, _, value = line.partition("=")
-                    key = key.strip()
-                    value = value.strip().strip('"').strip("'")
-                    if key and key not in os.environ:
-                        os.environ[key] = value
-
-
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_HEADERS = {
     "User-Agent": (
@@ -132,79 +87,32 @@ BASE_HEADERS = {
 GOVERNANCE_URL = "https://hub.ucd.ie/usis/W_HU_REPORTING.P_DISPLAY_QUERY?p_query=GD110-1"
 STUDENT_GUIDES_URL = "https://www.ucd.ie/studentadvisers/studentguides/"
 
-BASE_DIR = Path(".")
-INDEX_FILE = BASE_DIR / "index.json"  # sync-state only — no scraped content lives locally
-
-# ── Load Supabase credentials (from .env or existing environment) ────────────
-load_environment()
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET")
-
-if not SUPABASE_URL:
-    raise RuntimeError("Missing SUPABASE_URL environment variable. "
-                       "Add it to a .env file or set it in your shell.")
-if not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("Missing SUPABASE_SERVICE_ROLE_KEY environment variable. "
-                       "Add it to a .env file or set it in your shell.")
-if not SUPABASE_BUCKET:
-    raise RuntimeError("Missing SUPABASE_BUCKET environment variable. "
-                       "Add it to a .env file or set it in your shell.")
-
-# ⚠️ WARNING: The service_role key is now read from the environment. Ensure
-# your .env file is never committed to version control (add .env to .gitignore).
-
 BUCKET_PDF_FOLDER = "pdfs"
 BUCKET_MD_FOLDER = "markdown"
-
-_supabase_client: Client | None = None
-
-
-def get_supabase() -> Client:
-    global _supabase_client
-    if _supabase_client is None:
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    return _supabase_client
 
 
 def validate_credentials() -> None:
     """
-    Fail fast, with a clear message, if the key is malformed or rejected —
-    rather than discovering it 403 by 403 after scraping 20 PDFs.
+    Fail fast, with a clear message, if Supabase is unreachable.
+    Also ensures the bucket exists (creates it if needed).
     """
-    key_parts = SUPABASE_SERVICE_ROLE_KEY.split(".")
-    if len(key_parts) != 3 or any(not p for p in key_parts):
-        raise RuntimeError(
-            "SUPABASE_SERVICE_ROLE_KEY does not look like a valid JWT (expected 3 dot-separated "
-            "parts, e.g. 'xxxxx.yyyyy.zzzzz').\n"
-            "This is almost always caused by an incomplete or corrupted copy-paste:\n"
-            "  - Re-copy the FULL service_role key from Supabase: Settings → API\n"
-            "  - Make sure no line break was inserted (the key is one long line)\n"
-            "  - Make sure there are no extra quotes or spaces around it in the script\n"
-        )
-
     try:
-        get_supabase().storage.from_(SUPABASE_BUCKET).list()
+        bucket = storage_service.ensure_bucket_exists()
+        log.info(f"Supabase credentials OK — bucket '{bucket}' is reachable.")
     except Exception as e:
         raise RuntimeError(
             f"Supabase rejected the credentials/bucket during a startup check: {e}\n"
             "Check that:\n"
+            "  - SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are set in .env\n"
             "  - SUPABASE_SERVICE_ROLE_KEY is the service_role key (not anon), copied in full\n"
-            "  - SUPABASE_BUCKET matches the exact bucket name in Storage\n"
             "  - SUPABASE_URL matches Settings → API → Project URL exactly\n"
         ) from e
-
-    log.info("Supabase credentials OK — bucket is reachable.")
 
 
 def upload_to_supabase(bucket_folder: str, filename: str, data: bytes, content_type: str) -> str:
     """Upload raw bytes to <bucket_folder>/<filename> in the Supabase bucket (upsert). Returns storage path."""
     dest_path = f"{bucket_folder}/{filename}"
-    get_supabase().storage.from_(SUPABASE_BUCKET).upload(
-        path=dest_path,
-        file=data,
-        file_options={"content-type": content_type, "upsert": "true"},
-    )
+    storage_service.upload_file(dest_path, data, content_type, upsert=True)
     return dest_path
 
 
@@ -217,10 +125,12 @@ def sha256_of_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-DELAY = 1.5
+DELAY = 1.0
 PDF_TIMEOUT = 30
 HTTP_TIMEOUT = 20
 MAX_RETRIES = 3
+MAX_WORKERS = 3
+UPLOAD_SEMAPHORE = threading.BoundedSemaphore(2)  # max 2 concurrent Supabase uploads
 
 
 # ── Logger ────────────────────────────────────────────────────────────────────
@@ -409,24 +319,15 @@ def pdf_to_markdown(pdf_path: Path, source_url: str, label: str) -> str:
     return front_matter + body + "\n"
 
 
-# ── Load / save index ─────────────────────────────────────────────────────────
+# ── Load / save index (stored in Supabase bucket) ──────────────────────────────
 def load_index() -> dict:
-    if not INDEX_FILE.exists():
-        return {}
-    try:
-        raw = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
-        if isinstance(raw, list):
-            return {Path(e["pdf_file"]).stem: e for e in raw if isinstance(e, dict) and "pdf_file" in e}
-        if isinstance(raw, dict):
-            return raw
-        return {}
-    except Exception as e:
-        log.warning(f"Could not read index file {INDEX_FILE}: {e}")
-        return {}
+    """Download index.json from Supabase bucket. Returns empty dict if not found."""
+    return storage_service.download_index_json()
 
 
 def save_index(index: dict) -> None:
-    INDEX_FILE.write_text(json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8")
+    """Upload index.json to Supabase bucket root."""
+    storage_service.upload_index_json(index)
 
 
 # ── Level 1+2: Discover all Governance PDFs ──────────────────────────────────
@@ -485,150 +386,175 @@ def discover_pdf_items() -> list[dict]:
 
     log.info(f"Found {len(detail_pages)} detail pages, {len(pdf_items)} direct PDFs on index")
 
-    # Level 2: visit each detail page
-    for dp in detail_pages:
-        dp_url = dp["url"]
-        log.info(f"  Detail: {dp['label'][:60]}")
-
-        dp_r = http_get(dp_url)
-        if not dp_r:
-            continue
-
-        dp_soup = BeautifulSoup(dp_r.text, "html.parser")
-        pdf_url: str | None = None
-
-        # Strategy 1: "Download Document" link text
-        for a in dp_soup.find_all("a", href=True):
-            text = a.get_text(strip=True).lower()
-            href = a["href"].strip()
-            if "download" in text and ("document" in text or href.lower().endswith(".pdf")):
-                pdf_url = urljoin(dp_url, href)
-                break
-
-        # Strategy 2: any .pdf href
-        if not pdf_url:
-            for a in dp_soup.find_all("a", href=True):
-                href = a["href"].strip()
-                if href.lower().endswith(".pdf"):
-                    pdf_url = urljoin(dp_url, href)
-                    break
-
-        # Strategy 3: href containing download/getfile keywords
-        if not pdf_url:
-            for a in dp_soup.find_all("a", href=True):
-                href = a["href"].strip()
-                href_lower = href.lower()
-                if any(x in href_lower for x in ["download", "getfile", "document", "policy"]):
-                    pdf_url = urljoin(dp_url, href)
-                    break
-
-        if not pdf_url:
-            log.warning(f"    No PDF found: {dp_url}")
-            continue
-
-        if pdf_url in seen_pdf:
-            log.info(f"    [duplicate] {pdf_url}")
-            continue
-        seen_pdf.add(pdf_url)
-
-        # Extract title from detail page table, if present
-        title = dp["label"]
-        for row in dp_soup.find_all("tr"):
-            cells = row.find_all(["td", "th"])
-            if len(cells) >= 2:
-                key = cells[0].get_text(strip=True).lower()
-                val = cells[1].get_text(strip=True)
-                if "title" in key and val:
-                    title = val
-                    break
-
-        slug = slugify(title) or hashlib.md5(pdf_url.encode()).hexdigest()[:12]
-        log.info(f"    Found: {title[:50]}")
-
-        pdf_items.append(
-            {
-                "label": title,
-                "pdf_url": pdf_url,
-                "detail_url": dp_url,
-                "slug": slug,
-            }
-        )
+    # Level 2: visit each detail page (parallelized for speed)
+    if detail_pages:
+        log.info(f"  Crawling {len(detail_pages)} detail pages in parallel ({MAX_WORKERS} workers)...")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {executor.submit(_crawl_one_detail, dp): dp for dp in detail_pages}
+            for future in as_completed(futures):
+                result = future.result()
+                if result is None:
+                    continue
+                pdf_url, title, dp_url = result
+                if pdf_url in seen_pdf:
+                    log.info(f"    [duplicate] {pdf_url}")
+                    continue
+                seen_pdf.add(pdf_url)
+                slug = slugify(title) or hashlib.md5(pdf_url.encode()).hexdigest()[:12]
+                log.info(f"    Found: {title[:50]}")
+                pdf_items.append({
+                    "label": title,
+                    "pdf_url": pdf_url,
+                    "detail_url": dp_url,
+                    "slug": slug,
+                })
 
     log.info(f"Total PDFs discovered: {len(pdf_items)}")
     return pdf_items
 
 
+def _crawl_one_detail(dp: dict) -> tuple[str, str, str] | None:
+    """Crawl a single detail page and return (pdf_url, title, dp_url) or None."""
+    dp_url = dp["url"]
+    log.info(f"  Detail: {dp['label'][:60]}")
+
+    dp_r = http_get(dp_url)
+    if not dp_r:
+        return None
+
+    dp_soup = BeautifulSoup(dp_r.text, "html.parser")
+    pdf_url: str | None = None
+
+    # Strategy 1: "Download Document" link text
+    for a in dp_soup.find_all("a", href=True):
+        text = a.get_text(strip=True).lower()
+        href = a["href"].strip()
+        if "download" in text and ("document" in text or href.lower().endswith(".pdf")):
+            pdf_url = urljoin(dp_url, href)
+            break
+
+    # Strategy 2: any .pdf href
+    if not pdf_url:
+        for a in dp_soup.find_all("a", href=True):
+            href = a["href"].strip()
+            if href.lower().endswith(".pdf"):
+                pdf_url = urljoin(dp_url, href)
+                break
+
+    # Strategy 3: href containing download/getfile keywords
+    if not pdf_url:
+        for a in dp_soup.find_all("a", href=True):
+            href = a["href"].strip()
+            href_lower = href.lower()
+            if any(x in href_lower for x in ["download", "getfile", "document", "policy"]):
+                pdf_url = urljoin(dp_url, href)
+                break
+
+    if not pdf_url:
+        log.warning(f"    No PDF found: {dp_url}")
+        return None
+
+    # Extract title from detail page table, if present
+    title = dp["label"]
+    for row in dp_soup.find_all("tr"):
+        cells = row.find_all(["td", "th"])
+        if len(cells) >= 2:
+            key = cells[0].get_text(strip=True).lower()
+            val = cells[1].get_text(strip=True)
+            if "title" in key and val:
+                title = val
+                break
+
+    return (pdf_url, title, dp_url)
+
+
 # ── Sync: compare via SHA-256, download+upload new/changed to Supabase ───────
-def sync_and_process(discovered: list[dict], index: dict) -> tuple[dict, dict]:
-    stats = {"new": 0, "changed": 0, "skipped": 0, "failed": 0}
+def _process_one_pdf(item: dict, index: dict, bucket_name: str) -> dict | None:
+    """Process a single PDF item: check hash, download if new/changed, convert, upload.
+    Returns updated index entry dict or None on failure/skip."""
+    slug = item["slug"]
+    label = item["label"]
+    pdf_url = item["pdf_url"]
+    detail_url = item["detail_url"]
 
-    for item in discovered:
-        slug = item["slug"]
-        label = item["label"]
-        pdf_url = item["pdf_url"]
-        detail_url = item["detail_url"]
+    existing = index.get(slug)
+    stored_hash = existing.get("sha256") if existing else None
 
-        existing = index.get(slug)
-        stored_hash = existing.get("sha256") if existing else None
+    remote_hash = sha256_of_url(pdf_url)
 
-        log.info(f"  Checking: {label[:50]}")
-        remote_hash = sha256_of_url(pdf_url)
+    if remote_hash is None:
+        log.warning(f"    Could not compute remote hash — skipping this run: {pdf_url}")
+        return {"slug": slug, "action": "failed", "entry": None}
 
-        if remote_hash is None:
-            log.warning(f"    Could not compute remote hash — skipping this run: {pdf_url}")
-            stats["failed"] += 1
-            continue
+    if existing and stored_hash == remote_hash:
+        log.info(f"    [SKIP]     {label[:50]}  (SHA-256 match)")
+        return {
+            "slug": slug,
+            "action": "skipped",
+            "entry": {**existing, "label": label, "pdf_url": pdf_url, "detail_url": detail_url, "status": "unchanged"},
+        }
 
-        if existing and stored_hash == remote_hash:
-            log.info(f"    [SKIP]     {label[:50]}  (SHA-256 match)")
-            existing.update({"label": label, "pdf_url": pdf_url, "detail_url": detail_url, "status": "unchanged"})
-            stats["skipped"] += 1
-            continue
+    action = "changed" if existing else "new"
+    log.info(f"    [{action.upper()}]  {label[:50]}")
 
-        action = "changed" if existing else "new"
-        log.info(f"    [{action.upper()}]  {label[:50]}")
+    # ── Download PDF bytes ───────────────────────────────────────────────────
+    pdf_bytes = download_bytes(pdf_url)
+    if pdf_bytes is None:
+        log.error(f"    DOWNLOAD FAILED: {pdf_url}")
+        return {"slug": slug, "action": "download_failed", "entry": None}
 
-        # ── Download PDF bytes ───────────────────────────────────────────────
-        pdf_bytes = download_bytes(pdf_url)
-        if pdf_bytes is None:
-            log.error(f"    FAILED download: {pdf_url}")
-            stats["failed"] += 1
-            continue
+    # ── Size check before upload (Supabase free tier: 50 MB) ─────────────────
+    MAX_SIZE_BYTES = 45 * 1024 * 1024  # 45 MB to stay safely under the limit
+    if len(pdf_bytes) > MAX_SIZE_BYTES:
+        log.error(f"    FILE TOO LARGE ({len(pdf_bytes):,} bytes > {MAX_SIZE_BYTES:,} limit): {slug}")
+        return {"slug": slug, "action": "oversized", "entry": None}
 
-        local_hash = sha256_of_bytes(pdf_bytes)
-        pdf_filename = f"{slug}.pdf"
-        md_filename = f"{slug}.md"
+    local_hash = sha256_of_bytes(pdf_bytes)
+    pdf_filename = f"{slug}.pdf"
+    md_filename = f"{slug}.md"
 
-        # ── Convert to Markdown (needs a real file path → use a temp file) ───
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(pdf_bytes)
-            tmp_path = Path(tmp.name)
+    # ── Convert to Markdown (needs a real file path → use a temp file) ───────
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = Path(tmp.name)
 
-        try:
-            md_text = pdf_to_markdown(tmp_path, detail_url, label)
-        finally:
-            _safe_unlink(tmp_path)
-
+    empty_pages = None
+    try:
+        md_text = pdf_to_markdown(tmp_path, detail_url, label)
         if not md_text:
-            log.warning(f"    SKIP markdown (empty conversion): {pdf_filename}")
-            stats["failed"] += 1
-            continue
+            empty_pages = count_pdf_pages(tmp_path)
+    except Exception as e:
+        log.error(f"    CONVERSION ERROR for {slug}: {e}", exc_info=True)
+        return {"slug": slug, "action": "conversion_error", "entry": None}
+    finally:
+        _safe_unlink(tmp_path)
 
-        # ── Upload PDF + Markdown to Supabase Storage ─────────────────────────
-        try:
-            pdf_path_in_bucket = upload_to_supabase(BUCKET_PDF_FOLDER, pdf_filename, pdf_bytes, "application/pdf")
-            md_path_in_bucket = upload_to_supabase(
-                BUCKET_MD_FOLDER, md_filename, md_text.encode("utf-8"), "text/markdown"
-            )
-        except Exception as e:
-            log.error(f"    Supabase upload failed for {slug}: {e}")
-            stats["failed"] += 1
-            continue
+    if not md_text:
+        log.warning(f"    EMPTY CONVERSION: {pdf_filename}  (pages={empty_pages}, size={len(pdf_bytes):,} bytes, url={pdf_url[:80]})")
+        return {"slug": slug, "action": "conversion_failed", "entry": None}
 
-        log.info(f"    Uploaded:  {SUPABASE_BUCKET}/{pdf_path_in_bucket}")
-        log.info(f"    Uploaded:  {SUPABASE_BUCKET}/{md_path_in_bucket}  ({len(md_text):,} chars)")
+    # ── Upload PDF + Markdown to Supabase Storage (with concurrency limit) ────
+    if not UPLOAD_SEMAPHORE.acquire(timeout=300):
+        log.error(f"    Upload semaphore timeout (deadlock?) for {slug}")
+        return {"slug": slug, "action": "upload_failed", "entry": None}
+    try:
+        pdf_path_in_bucket = upload_to_supabase(BUCKET_PDF_FOLDER, pdf_filename, pdf_bytes, "application/pdf")
+        md_path_in_bucket = upload_to_supabase(
+            BUCKET_MD_FOLDER, md_filename, md_text.encode("utf-8"), "text/markdown"
+        )
+    except Exception as e:
+        log.error(f"    Supabase upload failed for {slug}: {e}", exc_info=True)
+        return {"slug": slug, "action": "upload_failed", "entry": None}
+    finally:
+        UPLOAD_SEMAPHORE.release()
 
-        index[slug] = {
+    log.info(f"    Uploaded:  {bucket_name}/{pdf_path_in_bucket}")
+    log.info(f"    Uploaded:  {bucket_name}/{md_path_in_bucket}  ({len(md_text):,} chars)")
+
+    return {
+        "slug": slug,
+        "action": action,
+        "entry": {
             "label": label,
             "pdf_url": pdf_url,
             "detail_url": detail_url,
@@ -636,9 +562,48 @@ def sync_and_process(discovered: list[dict], index: dict) -> tuple[dict, dict]:
             "md_file": md_path_in_bucket,
             "sha256": local_hash,
             "status": action,
-        }
+        },
+    }
 
-        stats["new" if action == "new" else "changed"] += 1
+
+def sync_and_process(discovered: list[dict], index: dict) -> tuple[dict, dict]:
+    """Sync governance PDFs in parallel using a thread pool."""
+    bucket_name = storage_service.get_bucket_name()
+    stats = {"new": 0, "changed": 0, "skipped": 0, "failed": 0,
+             "download_failed": 0, "conversion_failed": 0, "conversion_error": 0,
+             "upload_failed": 0, "oversized": 0}
+
+    total = len(discovered)
+    done = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(_process_one_pdf, item, index, bucket_name): item
+            for item in discovered
+        }
+        for future in as_completed(futures):
+            done += 1
+            result = future.result()
+            if result is None:
+                stats["failed"] += 1
+            else:
+                action = result["action"]
+                if action in ("new", "changed"):
+                    if result["entry"]:
+                        index[result["slug"]] = result["entry"]
+                    stats[action] += 1
+                elif action == "skipped":
+                    if result["entry"]:
+                        index[result["slug"]] = result["entry"]
+                    stats["skipped"] += 1
+                elif action in ("download_failed", "conversion_failed", "conversion_error",
+                               "upload_failed", "oversized"):
+                    stats[action] += 1
+                    stats["failed"] += 1
+                else:
+                    stats["failed"] += 1
+
+            pct = done * 100 // total
+            log.info(f"  📄 PDF {done}/{total} ({pct}%) — {stats['new']} new, {stats['skipped']} skip, {stats['failed']} fail")
 
     return index, stats
 
@@ -868,26 +833,62 @@ def discover_and_scrape_student_guides(index: dict) -> tuple[dict, dict]:
 
     log.info(f"Found {len(guide_links)} student guide pages")
 
-    for guide in guide_links:
+    def _process_one_guide(guide: dict) -> dict | None:
+        """Scrape and upload a single student guide page."""
         url = guide["url"]
         label = guide["label"]
         slug = "guide_" + (slugify(label) or hashlib.md5(url.encode()).hexdigest()[:12])
         md_filename = f"{slug}.md"
 
         log.info(f"  Scraping: {label[:60]}")
-        log.info(f"    URL: {url}")
 
         md_text = _scrape_guide_page(url, label)
         if not md_text:
             log.warning(f"    FAILED or empty: {url}")
-            stats["failed"] += 1
-            continue
+            return {"slug": slug, "action": "failed", "entry": None}
 
         new_hash = sha256_of_text(md_text)
+        return {
+            "slug": slug,
+            "action": "check",
+            "entry": {
+                "label": label,
+                "source_url": url,
+                "md_filename": md_filename,
+                "md_text": md_text,
+                "sha256": new_hash,
+            },
+        }
+
+    bucket_name = storage_service.get_bucket_name()
+
+    # Phase 1: scrape all guide pages in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        scrape_futures = {executor.submit(_process_one_guide, guide): guide for guide in guide_links}
+        scrape_results: list[dict] = []
+        for future in as_completed(scrape_futures):
+            result = future.result()
+            if result is None or result["action"] == "failed":
+                stats["failed"] += 1
+                continue
+            scrape_results.append(result)
+
+    # Phase 2: hash-check and upload (sequential to avoid race conditions on index)
+    total = len(scrape_results)
+    done = 0
+    for result in scrape_results:
+        done += 1
+        entry = result["entry"]
+        slug = result["slug"]
+        label = entry["label"]
+        url = entry["source_url"]
+        md_filename = entry["md_filename"]
+        md_text = entry["md_text"]
+        new_hash = entry["sha256"]
+
         stored_hash = index.get(slug, {}).get("sha256")
 
         if stored_hash and stored_hash == new_hash:
-            log.info(f"    [SKIP] No changes detected for {slug}.md")
             stats["skipped"] += 1
             index[slug] = {
                 **index.get(slug, {}),
@@ -897,32 +898,31 @@ def discover_and_scrape_student_guides(index: dict) -> tuple[dict, dict]:
                 "doc_type": "student_guide",
                 "status": "unchanged",
             }
-            continue
+        else:
+            action = "changed" if stored_hash else "new"
+            log.info(f"    [{action.upper()}] {slug}.md")
 
-        action = "changed" if stored_hash else "new"
-        log.info(f"    [{action.upper()}] {slug}.md")
+            try:
+                md_path_in_bucket = upload_to_supabase(
+                    BUCKET_MD_FOLDER, md_filename, md_text.encode("utf-8"), "text/markdown"
+                )
+            except Exception as e:
+                log.error(f"    Supabase upload failed for {slug}: {e}")
+                stats["failed"] += 1
+            else:
+                log.info(f"    Uploaded: {bucket_name}/{md_path_in_bucket}  ({len(md_text):,} chars)")
+                index[slug] = {
+                    "label": label,
+                    "source_url": url,
+                    "md_file": md_path_in_bucket,
+                    "sha256": new_hash,
+                    "doc_type": "student_guide",
+                    "status": action,
+                }
+                stats["new" if action == "new" else "changed"] += 1
 
-        try:
-            md_path_in_bucket = upload_to_supabase(
-                BUCKET_MD_FOLDER, md_filename, md_text.encode("utf-8"), "text/markdown"
-            )
-        except Exception as e:
-            log.error(f"    Supabase upload failed for {slug}: {e}")
-            stats["failed"] += 1
-            continue
-
-        log.info(f"    Uploaded: {SUPABASE_BUCKET}/{md_path_in_bucket}  ({len(md_text):,} chars)")
-
-        index[slug] = {
-            "label": label,
-            "source_url": url,
-            "md_file": md_path_in_bucket,
-            "sha256": new_hash,
-            "doc_type": "student_guide",
-            "status": action,
-        }
-
-        stats["new" if action == "new" else "changed"] += 1
+        pct = done * 100 // total
+        log.info(f"  📝 Guide {done}/{total} ({pct}%) — {stats['new']} new, {stats['skipped']} skip, {stats['failed']} fail")
 
     log.info(f"Student Guides — New: {stats['new']}  Changed: {stats['changed']}  "
              f"Skipped: {stats['skipped']}  Failed: {stats['failed']}")
@@ -948,6 +948,9 @@ def main() -> None:
     discovered = discover_pdf_items()
     if discovered:
         index, pdf_stats = sync_and_process(discovered, index)
+        # Save index immediately after governance PDFs (so re-runs skip already-uploaded files)
+        save_index(index)
+        log.info("  Index saved after governance PDFs.")
     else:
         log.error("No PDFs discovered.")
         pdf_stats = {"new": 0, "changed": 0, "skipped": 0, "failed": 0}
@@ -955,25 +958,33 @@ def main() -> None:
     # ── Source 2: Student Guides ──────────────────────────────────────────────
     index, guide_stats = discover_and_scrape_student_guides(index)
 
+    # Final index save (student guides + everything)
     save_index(index)
+    log.info("  Final index saved.")
 
     # ── Summary ───────────────────────────────────────────────────────────────
     log.info("=" * 60)
     log.info("SYNC COMPLETE")
     log.info("  [Governance PDFs]")
-    log.info(f"    New     : {pdf_stats['new']}")
-    log.info(f"    Changed : {pdf_stats['changed']}")
-    log.info(f"    Skipped : {pdf_stats['skipped']}")
-    log.info(f"    Failed  : {pdf_stats['failed']}")
+    log.info(f"    New              : {pdf_stats['new']}")
+    log.info(f"    Changed          : {pdf_stats['changed']}")
+    log.info(f"    Skipped          : {pdf_stats['skipped']}")
+    log.info(f"    Failed (total)   : {pdf_stats['failed']}")
+    if any(pdf_stats.get(k) for k in ("download_failed", "conversion_failed", "conversion_error", "upload_failed", "oversized")):
+        log.info(f"      ─ download    : {pdf_stats.get('download_failed', 0)}")
+        log.info(f"      ─ conversion  : {pdf_stats.get('conversion_failed', 0)} (empty) / {pdf_stats.get('conversion_error', 0)} (error)")
+        log.info(f"      ─ upload      : {pdf_stats.get('upload_failed', 0)}")
+        log.info(f"      ─ too large   : {pdf_stats.get('oversized', 0)}")
     log.info("  [Student Guides]")
     log.info(f"    New     : {guide_stats['new']}")
     log.info(f"    Changed : {guide_stats['changed']}")
     log.info(f"    Skipped : {guide_stats['skipped']}")
     log.info(f"    Failed  : {guide_stats['failed']}")
-    log.info(f"  Supabase bucket : {SUPABASE_BUCKET}")
+    bucket = storage_service.get_bucket_name()
+    log.info(f"  Supabase bucket : {bucket}")
     log.info(f"  PDFs folder     : {BUCKET_PDF_FOLDER}/")
     log.info(f"  Markdown folder : {BUCKET_MD_FOLDER}/")
-    log.info(f"  Index (local)   : {INDEX_FILE}")
+    log.info(f"  Index           : {bucket}/index.json")
     log.info("=" * 60)
 
 

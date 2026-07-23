@@ -28,8 +28,6 @@
     --terminal-bg: #1e293b;
     --terminal-text: #e2e8f0;
   }
-
-  /* ── Dark theme ──────────────────────────────────────────── */
   [data-theme="dark"] {
     --bg: #0b0f19;
     --surface: #151a28;
@@ -60,6 +58,68 @@
     overflow: hidden;
     transition: background var(--transition), color var(--transition);
   }
+
+  /* ── Login overlay ──────────────────────────────────────── */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: opacity .3s, visibility .3s;
+  }
+  .login-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px 36px;
+    box-shadow: var(--shadow);
+    width: 360px;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .login-card .logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .login-card h2 { font-size: 1rem; color: var(--text2); margin-bottom: 24px; font-weight: 400; }
+  .login-card input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .9rem;
+    margin-bottom: 12px;
+    transition: border var(--transition);
+  }
+  .login-card input:focus { outline: none; border-color: var(--accent); }
+  .login-card .login-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .login-card .login-btn:hover { background: var(--accent2); }
+  .login-error { color: var(--red); font-size: .8rem; margin-top: 8px; min-height: 20px; }
 
   /* ── Header ──────────────────────────────────────────────── */
   .header {
@@ -94,7 +154,6 @@
   .header .badge.error { background: var(--red); }
   .header .badge.ok { background: var(--green); }
 
-  /* ── Theme toggle ────────────────────────────────────────── */
   .theme-toggle {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -214,19 +273,8 @@
   .card h2 svg { width:20px; height:20px; color: var(--accent2); }
 
   /* ── Form elements ───────────────────────────────────────── */
-  .form-row {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: flex-end;
-  }
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-    min-width: 160px;
-  }
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
   .form-group label {
     font-size: .75rem;
     text-transform: uppercase;
@@ -294,23 +342,25 @@
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
   }
-  .file-table tr:hover td { background: var(--surface2); }
+  .file-table tbody tr {
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .file-table tbody tr:hover td { background: var(--surface2); }
+  .file-table tbody tr.dbl-click-hint:hover::after {
+    content: " double-click to open";
+    font-size: .65rem;
+    color: var(--text3);
+    font-style: italic;
+  }
   .file-row-actions { display: flex; gap: 6px; }
   .file-icon { color: var(--accent2); }
   .empty-state {
     text-align: center;
     padding: 40px;
     color: var(--text3);
+    cursor: default;
   }
-  .spinner {
-    display: inline-block;
-    width: 18px; height: 18px;
-    border: 2px solid var(--text3);
-    border-top-color: var(--accent2);
-    border-radius: 50%;
-    animation: spin .6s linear infinite;
-  }
-  @keyframes spin { to { transform:rotate(360deg); } }
 
   /* ── Upload zone ─────────────────────────────────────────── */
   .upload-zone {
@@ -377,7 +427,6 @@
   .toast.info { background: #1e3a5f; color: #dbeafe; }
   @keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
 
-  /* ── Responsive ──────────────────────────────────────────── */
   @media (max-width: 768px) {
     .sidebar { width: 60px; }
     .tab-btn span { display: none; }
@@ -387,7 +436,6 @@
     .sidebar .section-title { display: none; }
   }
 
-  /* ── Progress bar ────────────────────────────────────────── */
   .progress-bar {
     height: 4px;
     background: var(--border);
@@ -406,26 +454,70 @@
     0%, 100% { opacity: 1; }
     50% { opacity: .5; }
   }
+
+  .logout-btn {
+    font-size: .7rem;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+  .stop-btn {
+    background: transparent;
+    border: 1px solid var(--red);
+    border-radius: 99px;
+    padding: 4px 12px;
+    font-size: .75rem;
+    color: var(--red);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all var(--transition);
+  }
+  .stop-btn:hover { background: var(--red); color: #fff; }
 </style>
 </head>
 <body>
+
+<!-- ═══════════════ LOGIN OVERLAY ═══════════════ -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="logo">⚡ PolicyBot Admin</div>
+    <h2>Sign in to continue</h2>
+    <input type="text" id="loginUser" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
 
 <!-- ═══════════════ HEADER ═══════════════ -->
 <div class="header">
   <div class="logo">⚡ PolicyBot Admin</div>
   <div class="badge error" id="connectionBadge">CHECKING…</div>
-  <button class="btn btn-outline btn-sm" onclick="stopAllProcesses()" style="color:var(--red);border-color:var(--red);padding:4px 12px;font-size:.75rem" title="Signal running scrape/ingest tasks to stop">
+  <button class="stop-btn" onclick="stopAllProcesses()" id="stopAllBtn" title="1st click: stop active task | 2nd click (within 3s): shutdown backend | 3rd: force exit">
     ⏹ Stop All
   </button>
   <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
     <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
   </button>
+  <button class="logout-btn" onclick="doLogout()">Logout</button>
 </div>
 
 <!-- ═══════════════ STATUS BAR ═══════════════ -->
 <div class="status-bar" id="statusBar">
   <span class="status-dot disconnected" id="statusDot"></span>
   <span id="statusLabel">Checking connection…</span>
+  <span style="margin-left:auto;display:flex;gap:16px;align-items:center">
+    <span style="font-size:.75rem;color:var(--text3);display:flex;align-items:center;gap:5px" id="qdrantMetric">
+      <span class="status-dot disconnected" id="qdrantDot"></span>
+      <span id="qdrantLabel">Qdrant: checking…</span>
+    </span>
+  </span>
 </div>
 
 <!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
@@ -433,8 +525,6 @@
 
 <!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
 <div class="main">
-
-  <!-- ── SIDEBAR ─────────────────────────────── -->
   <nav class="sidebar">
     <div class="section-title">Operations</div>
     <button class="tab-btn active" data-tab="files">
@@ -460,9 +550,7 @@
     </button>
   </nav>
 
-  <!-- ── CONTENT ────────────────────────────── -->
   <div class="content">
-
     <!-- ═══ TAB: FILE BROWSER ═══ -->
     <div class="tab-panel active" id="tab-files">
       <div class="card">
@@ -478,8 +566,14 @@
           <button class="btn btn-danger btn-sm" onclick="deleteSelectedFiles()" id="deleteSelectedBtn" disabled>
             🗑️ Delete Selected (<span id="selectedCount">0</span>)
           </button>
+          <button class="btn btn-primary btn-sm" onclick="downloadSelectedFiles()" id="downloadSelectedBtn" disabled>
+            📥 Download Selected
+          </button>
           <button class="btn btn-danger btn-sm" onclick="deleteAllFiles()" id="deleteAllBtn">
             🗑️ Delete All Files
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="emptySupabaseBucket()" id="emptyBucketBtn">
+            🪣 Empty Supabase Bucket
           </button>
           <span style="font-size:.8rem;color:var(--text3);align-self:center" id="fileCount"></span>
         </div>
@@ -512,8 +606,7 @@
             <input type="text" id="uploadFolder" placeholder="e.g. policies/">
           </div>
         </div>
-        <div class="upload-zone" id="uploadZone"
-             onclick="document.getElementById('fileInput').click()">
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4M12 4L8 8M12 4l4 4"/><path d="M20 16v1a3 3 0 01-3 3H7a3 3 0 01-3-3v-1"/></svg>
           <p>Drop files here or click to browse</p>
           <p class="small">Supports PDF, MD, TXT, JSON, CSV</p>
@@ -541,19 +634,21 @@
           Re-Ingestion Pipeline
         </h2>
         <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
-          Runs <code>ingestion.py</code> directly — reads local <code>policies_mds/</code> files,
-          re-chunks all documents, re-embeds them, and upserts into Qdrant.
+          Downloads ALL Markdown files from Supabase storage, re-chunks, re-embeds, and upserts into Qdrant.
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-orange" onclick="triggerIngestion()" id="ingestBtn">
-            🔄 Re-Ingest All Documents
+            🔄 Re-Ingest (Clear Qdrant → Ingest)
           </button>
           <button class="btn btn-danger btn-sm" onclick="clearQdrant()">
             🗑️ Clear Qdrant Only
           </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQdrantCollection()" id="deleteQdrantBtn">
+            💥 Delete Qdrant Collection
+          </button>
         </div>
         <p style="font-size:.75rem;color:var(--yellow);margin-top:12px">
-          ⚠️ Make sure <code>policies_mds/</code> has the Markdown files you want to ingest.
+          ⚠️ Ingestion now reads Markdown files directly from Supabase storage.
           Watch the Live Terminal tab for progress.
         </p>
         <div class="progress-bar" id="ingestProgress" style="display:none"><div class="fill"></div></div>
@@ -568,8 +663,8 @@
           UCD Policy Scraper
         </h2>
         <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
-          Runs the full UCD scraper pipeline: governance PDFs + student guides → policies_mds/.
-          After scraping, you can optionally trigger ingestion to push everything to Qdrant.
+          Runs the full UCD scraper pipeline: governance PDFs + student guides → Supabase Storage.
+          index.json is now stored in Supabase (not local disk).
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="triggerScrape()" id="scrapeBtn">
@@ -597,37 +692,97 @@
           </div>
         </div>
         <div class="terminal" id="terminal">
-          <div class="log-line"><span class="prompt">$ </span><span class="log-info">Terminal ready — checking backend status…</span></div>
+          <div class="log-line"><span class="prompt">$ </span><span class="log-info">Terminal ready — please sign in…</span></div>
         </div>
       </div>
     </div>
-
-  </div><!-- .content -->
-</div><!-- .main -->
+  </div>
+</div>
 
 <!-- ═══════════════ SCRIPTS ═══════════════ -->
 <script>
+// ── Auth state ────────────────────────────────────────────────────────────────
+let adminToken = sessionStorage.getItem('policybot_admin_token') || '';
+
 // ── State ────────────────────────────────────────────────────────────────────
-let selectedFiles = [];       // for upload
-let checkedFiles = new Set(); // for file-browser multi-select
+let selectedFiles = [];
+let checkedFiles = new Set();
 let autoScroll = true;
 let eventSource = null;
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+function showLogin() {
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginUser').focus();
+}
+
+function hideLogin() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+
+  if (!username || !password) {
+    errEl.textContent = 'Please enter both username and password.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      adminToken = data.token;
+      sessionStorage.setItem('policybot_admin_token', adminToken);
+      errEl.textContent = '';
+      hideLogin();
+      checkStatus();
+      startLogStream();
+    } else {
+      errEl.textContent = data.message || 'Invalid credentials';
+    }
+  } catch (e) {
+    errEl.textContent = 'Cannot reach backend. Is the server running?';
+  }
+}
+
+async function doLogout() {
+  if (adminToken) {
+    try {
+      await fetch('/admin/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: adminToken }),
+      });
+    } catch (e) {}
+  }
+  adminToken = '';
+  sessionStorage.removeItem('policybot_admin_token');
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('terminal').innerHTML =
+    '<div class="log-line"><span class="prompt">$ </span><span class="log-info">Signed out.</span></div>';
+  updateConnectionUI(false, 'Signed out');
+  showLogin();
+}
 
 // ── Theme management ─────────────────────────────────────────────────────────
 function getTheme() {
   return document.documentElement.getAttribute('data-theme') || 'light';
 }
-
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('policybot_admin_theme', theme);
   updateThemeIcon();
 }
-
 function toggleTheme() {
   setTheme(getTheme() === 'dark' ? 'light' : 'dark');
 }
-
 function updateThemeIcon() {
   const icon = document.getElementById('themeIcon');
   if (getTheme() === 'dark') {
@@ -636,21 +791,32 @@ function updateThemeIcon() {
     icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
   }
 }
-
-// Load saved theme (default light)
 (function() {
   const saved = localStorage.getItem('policybot_admin_theme');
   if (saved === 'dark') setTheme('dark');
   else setTheme('light');
 })();
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Auth-aware API helpers ───────────────────────────────────────────────────
 async function apiCall(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (adminToken) {
+    headers['X-Admin-Token'] = adminToken;
+  }
   const res = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+  // Handle 401 — token expired or invalid
+  if (res.status === 401) {
+    adminToken = '';
+    sessionStorage.removeItem('policybot_admin_token');
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    showLogin();
+    document.getElementById('loginError').textContent = 'Session expired. Please log in again.';
+    throw new Error('Session expired — please log in again');
+  }
   const text = await res.text();
   let data;
   try {
@@ -678,17 +844,26 @@ function setBtnDisabled(id, disabled) { document.getElementById(id).disabled = d
 // ── Tab switching ────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    switchToTab(btn.dataset.tab);
   });
 });
 
+function switchToTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + tabName);
+  });
+}
+
 // ── Connection status ────────────────────────────────────────────────────────
 async function checkStatus() {
+  if (!adminToken) return;
   try {
-    const data = await fetch('/admin/supabase/status').then(r => r.json());
+    const data = await fetch('/admin/supabase/status', {
+      headers: { 'X-Admin-Token': adminToken }
+    }).then(r => r.json());
     const ok = data.status === 'ok';
     updateConnectionUI(ok, data.message || data.bucket || '');
     if (ok) {
@@ -697,6 +872,31 @@ async function checkStatus() {
   } catch (e) {
     updateConnectionUI(false, 'Cannot reach backend');
     appendLogLine('error', '⚠️ Cannot reach backend API');
+  }
+  fetchQdrantStats();
+}
+
+async function fetchQdrantStats() {
+  try {
+    const res = await fetch('/admin/qdrant/stats');
+    const data = await res.json();
+    const dot = document.getElementById('qdrantDot');
+    const label = document.getElementById('qdrantLabel');
+    if (data.exists) {
+      dot.className = 'status-dot connected';
+      label.textContent = `Qdrant: ${data.collection} · ${data.point_count.toLocaleString()} vectors`;
+    } else if (data.status === 'ok') {
+      dot.className = 'status-dot disconnected';
+      label.textContent = `Qdrant: ${data.collection} (empty)`;
+    } else {
+      dot.className = 'status-dot disconnected';
+      label.textContent = `Qdrant: unreachable`;
+    }
+  } catch (e) {
+    const dot = document.getElementById('qdrantDot');
+    const label = document.getElementById('qdrantLabel');
+    if (dot) dot.className = 'status-dot disconnected';
+    if (label) label.textContent = 'Qdrant: unreachable';
   }
 }
 
@@ -719,6 +919,7 @@ function updateConnectionUI(isConnected, label) {
 // ── File operations ──────────────────────────────────────────────────────────
 async function listFiles() {
   showProgress('filesProgress');
+  fetchQdrantStats();
   try {
     const data = await apiCall('POST', '/admin/supabase/files');
     renderFileTable(data.files || []);
@@ -744,32 +945,32 @@ function renderFileTable(files) {
     const icons = { pdf:'📄', md:'📝', txt:'📃', json:'{ }', csv:'📊', docx:'📄', xlsx:'📊' };
     const icon = icons[ext] || '📁';
     const esc = escapeHtml(f);
-    return `<tr>
-      <td><input type="checkbox" class="file-cb" value="${esc}" onchange="onFileCheck(this)"></td>
+    return `<tr ondblclick="openFileOnSupabase('${esc}')" title="Double-click to open on Supabase">
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="file-cb" value="${esc}" onchange="onFileCheck(this)"></td>
       <td><span class="file-icon">${icon}</span> ${esc}</td>
-      <td>
+      <td onclick="event.stopPropagation()">
         <div class="file-row-actions">
-          <button class="btn btn-outline btn-sm" onclick="downloadFile('${esc}')">⬇️</button>
-          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteFile('${esc}')">🗑️</button>
+          <button class="btn btn-outline btn-sm" onclick="downloadFile('${esc}')" title="Download">⬇️</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteFile('${esc}')" title="Delete">🗑️</button>
         </div>
       </td>
     </tr>`;
   }).join('');
 }
 
-function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 async function deleteFile(path) {
-  if (!confirm(`Delete "${path}"?`)) return;
+  if (!confirm(`Delete "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
   try {
-    await apiCall('POST', '/admin/supabase/delete', { file_path: path });
-    toast(`Deleted: ${path}`, 'success');
+    const data = await apiCall('POST', '/admin/supabase/delete', { file_path: path });
+    toast(`Deleted: ${path} (${data.qdrant_chunks_deleted} chunks removed)`, 'success');
     listFiles();
   } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteAllFiles() {
-  if (!confirm('⚠️ This will delete ALL files from the Supabase bucket. Are you sure?')) return;
+  if (!confirm('⚠️ This will delete ALL files from Supabase AND clear Qdrant. Are you sure?')) return;
   const typed = prompt('⚠️⚠️ This is irreversible! Type DELETE to confirm:');
   if (typed !== 'DELETE') {
     toast('Delete-all cancelled (must type DELETE exactly)', 'info');
@@ -777,7 +978,7 @@ async function deleteAllFiles() {
   }
   try {
     const data = await apiCall('POST', '/admin/supabase/delete-all');
-    toast(`Deleted ${data.deleted_count} file(s)`, 'success');
+    toast(`Deleted ${data.supabase_deleted} file(s), Qdrant cleared: ${data.qdrant_cleared}`, 'success');
     listFiles();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -785,8 +986,32 @@ async function deleteAllFiles() {
 async function downloadFile(path) {
   try {
     const data = await apiCall('POST', '/admin/supabase/download', { file_path: path });
-    window.open(data.url, '_blank');
+    if (data.url) {
+      const response = await fetch(data.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = path.split('/').pop();
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast(`Downloading: ${path.split('/').pop()}`, 'success');
+    }
   } catch (e) { toast(e.message, 'error'); }
+}
+
+async function openFileOnSupabase(path) {
+  try {
+    const data = await apiCall('POST', '/admin/supabase/public-url', { file_path: path });
+    if (data.url) {
+      window.open(data.url, '_blank');
+    }
+  } catch (e) {
+    toast('Could not open file: ' + e.message, 'error');
+  }
 }
 
 // ── Multi-select helpers ─────────────────────────────────────────────────────
@@ -811,15 +1036,59 @@ function updateSelectedCount() {
   const count = checkedFiles.size;
   document.getElementById('selectedCount').textContent = count;
   document.getElementById('deleteSelectedBtn').disabled = count === 0;
+  document.getElementById('downloadSelectedBtn').disabled = count === 0;
+}
+
+async function downloadSelectedFiles() {
+  if (checkedFiles.size === 0) return;
+  const paths = Array.from(checkedFiles);
+  const btn = document.getElementById('downloadSelectedBtn');
+  btn.disabled = true;
+  btn.textContent = '📥 Zipping…';
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (adminToken) headers['X-Admin-Token'] = adminToken;
+    const res = await fetch('/admin/supabase/download-batch', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ file_paths: paths }),
+    });
+    if (res.status === 401) {
+      adminToken = '';
+      sessionStorage.removeItem('policybot_admin_token');
+      showLogin();
+      document.getElementById('loginError').textContent = 'Session expired. Please log in again.';
+      throw new Error('Session expired');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || 'Download failed');
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'policybot_files.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    toast(`Downloaded ${paths.length} file(s) as ZIP`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 Download Selected';
+  }
 }
 
 async function deleteSelectedFiles() {
   if (checkedFiles.size === 0) return;
   const paths = Array.from(checkedFiles);
-  if (!confirm(`⚠️ Delete ${paths.length} selected file(s)?`)) return;
+  if (!confirm(`⚠️ Delete ${paths.length} selected file(s)?\nThis will also remove their Qdrant chunks.`)) return;
   try {
     const data = await apiCall('POST', '/admin/supabase/delete-batch', { file_paths: paths });
-    toast(`Deleted ${data.deleted_count} file(s)`, 'success');
+    toast(`Deleted ${data.deleted_count} file(s) (${data.qdrant_chunks_deleted} chunks removed)`, 'success');
     listFiles();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -833,185 +1102,215 @@ const uploadZone = document.getElementById('uploadZone');
   uploadZone.addEventListener(evt, e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); });
 });
 uploadZone.addEventListener('drop', e => {
-  selectedFiles = Array.from(e.dataTransfer.files);
-  updateUploadPreview();
+  const files = e.dataTransfer.files;
+  selectedFiles = Array.from(files);
+  document.getElementById('uploadPreview').textContent = `${files.length} file(s) selected`;
 });
 
 function handleFileSelect(event) {
   selectedFiles = Array.from(event.target.files);
-  updateUploadPreview();
-}
-
-function updateUploadPreview() {
-  const preview = document.getElementById('uploadPreview');
-  if (selectedFiles.length === 0) { preview.innerHTML = ''; return; }
-  preview.innerHTML = `<strong>${selectedFiles.length} file(s) selected:</strong><br>` +
-    selectedFiles.map(f => `📎 ${f.name} (${formatSize(f.size)})`).join('<br>');
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
-  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+  document.getElementById('uploadPreview').textContent = `${selectedFiles.length} file(s) selected`;
 }
 
 async function uploadFiles(convert) {
-  if (selectedFiles.length === 0) { toast('Select files first', 'error'); return; }
-
+  if (selectedFiles.length === 0) {
+    toast('No files selected', 'error');
+    return;
+  }
+  const folder = document.getElementById('uploadFolder').value;
   const endpoint = convert ? '/admin/supabase/upload-convert' : '/admin/supabase/upload';
-  const folder = document.getElementById('uploadFolder').value.trim();
-  showProgress('uploadProgress');
-  setBtnDisabled('uploadBtn', true);
-  setBtnDisabled('uploadConvertBtn', true);
+  const progressBar = document.getElementById('uploadProgress');
+  progressBar.style.display = 'block';
 
-  let success = 0, fail = 0;
-  for (const file of selectedFiles) {
+  for (const f of selectedFiles) {
+    const fd = new FormData();
+    fd.append('file', f);
+    if (folder) fd.append('folder', folder);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', folder);
-
-      const res = await fetch(endpoint, { method: 'POST', body: formData });
+      const headers = {};
+      if (adminToken) headers['X-Admin-Token'] = adminToken;
+      const res = await fetch(endpoint, { method: 'POST', headers, body: fd });
       const data = await res.json();
-      if (res.ok) {
-        success++;
-        toast(`Uploaded: ${file.name}${data.md_path ? ' + MD' : ''}`, 'success');
-      } else {
-        fail++;
-        toast(`${file.name}: ${data.message}`, 'error');
-      }
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      const label = convert ? `PDF+MD → ${data.md_chars} chars` : `${data.size} bytes`;
+      toast(`✅ ${data.path || f.name} (${label})`, 'success');
     } catch (e) {
-      fail++;
-      toast(`${file.name}: ${e.message}`, 'error');
+      toast(`❌ ${f.name}: ${e.message}`, 'error');
     }
   }
-
-  hideProgress('uploadProgress');
-  setBtnDisabled('uploadBtn', false);
-  setBtnDisabled('uploadConvertBtn', false);
-  if (success > 0) toast(`${success} file(s) uploaded, ${fail} failed`, fail ? 'info' : 'success');
-
+  progressBar.style.display = 'none';
   selectedFiles = [];
+  document.getElementById('uploadPreview').textContent = '';
   document.getElementById('fileInput').value = '';
-  updateUploadPreview();
+  listFiles();
 }
 
 // ── Ingestion ────────────────────────────────────────────────────────────────
 async function triggerIngestion() {
-  setBtnDisabled('ingestBtn', true);
+  if (!confirm('🔄 This will:\n1. DELETE the Qdrant collection\n2. Re-create an empty collection\n3. Re-ingest all Markdown files from Supabase\n\nProceed?')) return;
   showProgress('ingestProgress');
+  setBtnDisabled('ingestBtn', true);
   try {
-    const data = await apiCall('POST', '/admin/ingest');
-    toast(data.message, 'info');
-    document.querySelector('[data-tab="terminal"]').click();
+    await apiCall('POST', '/admin/ingest');
+    switchToTab('terminal');
+    toast('Re-Ingestion started — switched to Live Terminal', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    setBtnDisabled('ingestBtn', false);
     hideProgress('ingestProgress');
+    setBtnDisabled('ingestBtn', false);
   }
 }
 
 async function clearQdrant() {
-  if (!confirm('⚠️ Delete ALL vectors from Qdrant collection "ucd_policies"? This does NOT re-ingest.')) return;
+  if (!confirm('Clear and recreate the Qdrant collection? Files in Supabase will NOT be deleted.')) return;
   try {
-    const data = await apiCall('POST', '/admin/qdrant/clear');
-    toast(data.message, 'info');
-    document.querySelector('[data-tab="terminal"]').click();
+    await apiCall('POST', '/admin/qdrant/clear');
+    toast('Qdrant clear started', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function emptySupabaseBucket() {
+  if (!confirm('⚠️ Delete ALL files from the Supabase bucket?\n\nThis does NOT touch Qdrant — use "Delete All Files" if you want to clear both.\n\nType DELETE to confirm:')) return;
+  const typed = prompt('⚠️⚠️ This will delete every file in the bucket! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Empty bucket cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    const data = await apiCall('POST', '/admin/supabase/empty-bucket');
+    toast(`Supabase bucket emptied: ${data.files_deleted} file(s) deleted`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteQdrantCollection() {
+  if (!confirm('💥 Permanently DELETE the Qdrant collection?\n\nUnlike "Clear Qdrant Only", this does NOT recreate the collection.\nYou will need to re-ingest to use the system again.\n\nType DELETE to confirm:')) return;
+  const typed = prompt('💥💥 Permanently delete Qdrant collection! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Delete collection cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    await apiCall('POST', '/admin/qdrant/delete-collection');
+    toast('Qdrant collection permanently deleted', 'success');
   } catch (e) { toast(e.message, 'error'); }
 }
 
 // ── Scraper ──────────────────────────────────────────────────────────────────
 async function triggerScrape() {
-  setBtnDisabled('scrapeBtn', true);
   showProgress('scrapeProgress');
+  setBtnDisabled('scrapeBtn', true);
   try {
-    const data = await apiCall('POST', '/admin/scrape');
-    toast(data.message, 'info');
-    document.querySelector('[data-tab="terminal"]').click();
+    await apiCall('POST', '/admin/scrape');
+    switchToTab('terminal');
+    toast('Scraper started — switched to Live Terminal', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    setBtnDisabled('scrapeBtn', false);
     hideProgress('scrapeProgress');
+    setBtnDisabled('scrapeBtn', false);
   }
 }
 
 async function triggerScrapeAndIngest() {
-  setBtnDisabled('scrapeIngestBtn', true);
   showProgress('scrapeProgress');
+  setBtnDisabled('scrapeIngestBtn', true);
   try {
-    const data = await apiCall('POST', '/admin/scrape-and-ingest');
-    toast(data.message, 'info');
-    document.querySelector('[data-tab="terminal"]').click();
+    await apiCall('POST', '/admin/scrape-and-ingest');
+    switchToTab('terminal');
+    toast('Scrape + Ingest started — switched to Live Terminal', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    setBtnDisabled('scrapeIngestBtn', false);
     hideProgress('scrapeProgress');
+    setBtnDisabled('scrapeIngestBtn', false);
+  }
+}
+
+// ── Stop All ─────────────────────────────────────────────────────────────────
+let stopClickCount = 0;
+let stopClickTimer = 0;
+
+async function stopAllProcesses() {
+  const now = Date.now();
+  if (now - stopClickTimer > 3000) stopClickCount = 0;
+  stopClickCount++;
+  stopClickTimer = now;
+
+  try {
+    const data = await apiCall('POST', '/admin/stop');
+    if (stopClickCount === 1) {
+      toast(data.message, 'info');
+    } else if (stopClickCount === 2) {
+      toast('⚠️ Backend shutting down! Page will become unreachable.', 'warning');
+      document.getElementById('stopAllBtn').textContent = '⏹ SHUTTING DOWN…';
+      document.getElementById('stopAllBtn').style.borderColor = '#fff';
+    } else {
+      toast('💥 Force-exiting backend!', 'error');
+    }
+  } catch (e) {
+    // Backend may already be dead — that's expected on 2nd/3rd click
+    if (stopClickCount >= 2) {
+      toast('Backend is shutting down…', 'warning');
+    } else {
+      toast('Stop failed: ' + e.message, 'error');
+    }
   }
 }
 
 // ── Live Terminal (SSE) ──────────────────────────────────────────────────────
 function startLogStream() {
   if (eventSource) eventSource.close();
-  eventSource = new EventSource('/admin/logs/stream');
+  if (!adminToken) return;
 
-  eventSource.onmessage = (event) => {
+  const sseUrl = `/admin/logs/stream?token=${encodeURIComponent(adminToken)}`;
+  eventSource = new EventSource(sseUrl);
+
+  eventSource.onmessage = (e) => {
     try {
-      const entry = JSON.parse(event.data);
-      appendLogLine(entry.level, entry.msg);
-    } catch (e) {
-      appendLogLine('info', event.data);
-    }
+      const entry = JSON.parse(e.data);
+      appendLogLine(entry.level || 'info', entry.msg || '');
+    } catch {}
   };
 
   eventSource.onerror = () => {
     appendLogLine('error', '⚠️ Log stream disconnected. Will retry…');
+    eventSource.close();
+    setTimeout(startLogStream, 3000);
   };
 }
 
 function appendLogLine(level, msg) {
   const term = document.getElementById('terminal');
-  const line = document.createElement('div');
-  line.className = 'log-line';
-  const cls = 'log-' + (level || 'info').toLowerCase();
-  line.innerHTML = `<span class="prompt">$ </span><span class="${cls}">${escapeHtml(msg)}</span>`;
-  term.appendChild(line);
-
-  if (autoScroll) {
-    term.scrollTop = term.scrollHeight;
-  }
-
-  while (term.children.length > 500) {
-    term.firstChild.remove();
-  }
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="log-${level}">${escapeHtml(msg)}</span>`;
+  term.appendChild(div);
+  if (autoScroll) { term.scrollTop = term.scrollHeight; }
 }
 
 function clearTerminal() {
-  const term = document.getElementById('terminal');
-  term.innerHTML = '<div class="log-line"><span class="prompt">$ </span><span class="log-debug">Terminal cleared.</span></div>';
+  document.getElementById('terminal').innerHTML = '';
 }
 
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
-  document.getElementById('autoScrollBtn').textContent = `📌 Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
-}
-
-// ── Stop all processes ──────────────────────────────────────────────────────
-async function stopAllProcesses() {
-  try {
-    const data = await apiCall('POST', '/admin/stop');
-    toast(data.message, 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
+  document.getElementById('autoScrollBtn').textContent =
+    `📌 Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
-startLogStream();
-checkStatus();
+(function init() {
+  if (adminToken) {
+    hideLogin();
+    checkStatus();
+    startLogStream();
+  } else {
+    showLogin();
+  }
+  fetchQdrantStats();
+})();
 </script>
-
 </body>
 </html>
