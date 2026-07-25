@@ -29,29 +29,29 @@ export default function ChatWindow() {
       <div
     className={`h-screen relative flex flex-col transition-colors duration-300 ${
       darkMode
-        ? "bg-[#0F172A] text-[#E5E7EB]"
+        ? "dark bg-[#0F172A] text-[#E5E7EB]"
         : "bg-[#F8FAFC] text-[#111827]"
     }`}
   >
         {/* HEADER */}
         <header
-          className={`absolute top-0 inset-x-0 z-20 flex items-center gap-4 p-4 backdrop-blur-md border-b transition-colors duration-300 ${
+          className={`absolute top-0 inset-x-0 z-20 flex items-center gap-3 px-4 py-2 backdrop-blur-sm border-b transition-colors duration-300 ${
             darkMode
-              ? "bg-[#0F172A]/60 border-white/10"
-              : "bg-[#F8FAFC]/70 border-black/5"
+              ? "bg-[#0F172A]/5 border-white/10"
+              : "bg-[#F8FAFC]/5 border-black/5"
           }`}
         >
           <img
               src={ucdLogo}
               alt="UCD Logo"
-              className="w-25 h-24 object-contain"
+              className="w-10 h-10 object-contain"
           />
 
           <div>
-            <h1 className="text-2xl font-semibold">
+            <h1 className="text-base font-semibold leading-tight">
               University College Dublin
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs text-gray-500 leading-tight">
               An Coláiste Ollscoile, Baile Átha Cliath
             </p>
             <p
@@ -59,8 +59,8 @@ export default function ChatWindow() {
                 color: "#004077",
                 fontWeight: 700,
                 letterSpacing: "0.08em",
-                fontSize: "16px",
-                marginTop: "2px"
+                fontSize: "10px",
+                marginTop: "1px"
               }}
             >
             STUDENT HELPDESK
@@ -69,7 +69,7 @@ export default function ChatWindow() {
 
           <button
             onClick={toggleDarkMode}
-            className="px-3 py-1 border rounded-lg ml-auto"
+            className="px-2.5 py-1 text-sm border rounded-lg ml-auto"
           >
             Theme
           </button>
@@ -93,7 +93,7 @@ export default function ChatWindow() {
             </div>
           ) : (
             <ThreadPrimitive.Viewport className="absolute inset-0 overflow-y-auto px-4 chat-scroll message-fade-mask">
-              <div className="max-w-4xl mx-auto pt-32 pb-40">
+              <div className="max-w-4xl mx-auto pt-16 pb-40">
                 <MessageList />
               </div>
             </ThreadPrimitive.Viewport>

@@ -19,24 +19,36 @@
 }
 
 .bubble.user {
-  background: #007db8;
-  color: white;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  color: #000000;
   border-bottom-right-radius: 4px;
 }
 
 .bubble.bot {
-  background: #1f2937;
-  border: 1px solid #374151;
-  color: #e5e7eb;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  color: #000000;
   border-bottom-left-radius: 4px;
+}
+
+.dark .bubble.user,
+.dark .bubble.bot {
+  background: #1e293b;
+  border-color: #334155;
+  color: #ffffff;
 }
 
 .citations {
   margin-top: 8px;
-  border-top: 1px solid #374151;
+  border-top: 1px solid #d1d5db;
   padding-top: 6px;
   font-size: 11px;
   opacity: 0.8;
+}
+
+.dark .citations {
+  border-top-color: #334155;
 }
 
 .citations-title {
@@ -48,16 +60,24 @@
   font-size: 18px;
   font-weight: 800;
   margin: 12px 0 8px;
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid #cbd5e1;
   padding-bottom: 4px;
+}
+
+.dark .markdown-body h1 {
+  border-bottom-color: #334155;
 }
 
 .markdown-body h2 {
   font-size: 16px;
   font-weight: 700;
   margin: 10px 0 6px;
-  border-bottom: 1px solid #2f3b4a;
+  border-bottom: 1px solid #d8dee6;
   padding-bottom: 3px;
+}
+
+.dark .markdown-body h2 {
+  border-bottom-color: #2f3b4a;
 }
 
 .markdown-body h3 {
@@ -83,6 +103,10 @@
 
 .markdown-body strong {
   font-weight: 700;
+  color: #000000;
+}
+
+.dark .markdown-body strong {
   color: #ffffff;
 }
 
@@ -109,5 +133,9 @@
 }
 
 .speak-btn:hover {
+  color: #000000;
+}
+
+.dark .speak-btn:hover {
   color: #ffffff;
 }
