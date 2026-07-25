@@ -4,7 +4,7 @@ const dictationAdapter = WebSpeechDictationAdapter.isSupported()
   ? new WebSpeechDictationAdapter({ language: "en-IE", interimResults: true })
   : undefined;
 
-export default function useChatRuntime({ messages, sendMessage, isRunning }) {
+export default function useChatRuntime({ messages, sendMessage, isRunning, cancelMessage }) {
   return useExternalStoreRuntime({
     messages,
     isRunning,
@@ -16,6 +16,9 @@ export default function useChatRuntime({ messages, sendMessage, isRunning }) {
     onNew: async (message) => {
       const text = message.content.find((part) => part.type === "text")?.text ?? "";
       await sendMessage(text);
+    },
+    onCancel: async () => {
+      cancelMessage();
     },
     adapters: dictationAdapter ? { dictation: dictationAdapter } : undefined,
   });

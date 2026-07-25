@@ -1,4 +1,4 @@
-import { ComposerPrimitive, WebSpeechDictationAdapter, useAui } from "@assistant-ui/react";
+import { ComposerPrimitive, ThreadPrimitive, WebSpeechDictationAdapter, useAui } from "@assistant-ui/react";
 import "../styles/InputBox.css";
 
 const dictationSupported = WebSpeechDictationAdapter.isSupported();
@@ -73,9 +73,17 @@ export default function InputBox() {
         </>
       )}
 
-      <ComposerPrimitive.Send className="icon-btn send-btn" title="Send">
-        <SendIcon />
-      </ComposerPrimitive.Send>
+      <ThreadPrimitive.If running={false}>
+        <ComposerPrimitive.Send className="icon-btn send-btn" title="Send">
+          <SendIcon />
+        </ComposerPrimitive.Send>
+      </ThreadPrimitive.If>
+
+      <ThreadPrimitive.If running={true}>
+        <ComposerPrimitive.Cancel className="icon-btn stop-btn" title="Stop response">
+          <StopIcon />
+        </ComposerPrimitive.Cancel>
+      </ThreadPrimitive.If>
     </ComposerPrimitive.Root>
   );
 }

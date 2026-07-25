@@ -93,6 +93,15 @@
   background: #006FA3;
 }
 
+.icon-btn.stop-btn {
+  background: #dc2626;
+  color: white;
+}
+
+.icon-btn.stop-btn:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
 .icon-btn.recording {
   background: #dc2626;
   color: white;

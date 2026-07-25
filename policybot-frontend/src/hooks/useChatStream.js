@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 // TEMPORARY: seed data for visual QA, will be reverted after review.
 const TEST_MESSAGES = [
@@ -19,6 +19,7 @@ const TEST_MESSAGES = [
 export default function useChatStream() {
   const [messages, setMessages] = useState(TEST_MESSAGES);
   const [isRunning, setIsRunning] = useState(false);
+  const abortControllerRef = useRef(null);
 
   const sendMessage = async (question) => {
     // Add user message
@@ -35,6 +36,9 @@ export default function useChatStream() {
     },
     ]);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsRunning(true);
 
     try {
@@ -48,6 +52,7 @@ export default function useChatStream() {
           body: JSON.stringify({
             question,
           }),
+          signal: controller.signal,
         }
       );
 
@@ -145,14 +150,22 @@ export default function useChatStream() {
           }
         }
       }
+    } catch (err) {
+      if (err.name !== "AbortError") throw err;
     } finally {
       setIsRunning(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const cancelMessage = () => {
+    abortControllerRef.current?.abort();
   };
 
   return {
     messages,
     sendMessage,
     isRunning,
+    cancelMessage,
   };
 }

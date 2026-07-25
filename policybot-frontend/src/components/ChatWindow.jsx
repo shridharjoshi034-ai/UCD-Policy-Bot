@@ -10,8 +10,8 @@ import ucdLogo from "../assets/ucd-logo.png";
 import "../styles/ChatWindow.css";
 
 export default function ChatWindow() {
-  const { messages, sendMessage, isRunning } = useChatStream();
-  const runtime = useChatRuntime({ messages, sendMessage, isRunning });
+  const { messages, sendMessage, isRunning, cancelMessage } = useChatStream();
+  const runtime = useChatRuntime({ messages, sendMessage, isRunning, cancelMessage });
   const [darkMode, setDarkMode] = useState(false);
   const [started, setStarted] = useState(false);
 

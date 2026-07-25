@@ -1,8 +1,16 @@
+import { useState } from "react";
 import "../styles/MessageBubble.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-const API_BASE = "http://localhost:8000";
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
 
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
@@ -12,6 +20,17 @@ export default function MessageBubble({ message }) {
     .join("");
   const hasContent = text.trim().length > 0;
   const citations = message.metadata?.custom?.citations;
+  const [copied, setCopied] = useState(false);
+
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy message:", err);
+    }
+  };
 
   const speakMessage = () => {
     if (window.speechSynthesis.speaking) {
@@ -110,7 +129,7 @@ export default function MessageBubble({ message }) {
             : "Read aloud"
         }
       >
-        Read aloud 🔊 
+        Read aloud 🔊
       </button>
     </div>
 
@@ -143,6 +162,24 @@ export default function MessageBubble({ message }) {
             )}
           </>
         )}
+      </div>
+    )}
+
+    <div className="copy-row">
+      <button
+        className="icon-btn-plain"
+        onClick={copyMessage}
+        title="Copy message"
+        aria-label="Copy message"
+      >
+        <CopyIcon />
+      </button>
+      {copied && (
+        <span className="copy-toast">Message copied to clipboard</span>
+      )}
+    </div>
+  </>
+)}
       </div>
     </div>
   );
