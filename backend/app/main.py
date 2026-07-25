@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from app.api import chat, health, sources
+from app.api import chat, health, sources, admin
 from app.observability.tracer import get_tracer
 
 
@@ -21,6 +20,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(sources.router)
+app.include_router(admin.router)
 
 @app.on_event("shutdown")
 

@@ -18,7 +18,7 @@ FlagEmbedding
 qdrant-client
 
 # Observability
-langfuse>=4.0.0
+langfuse==2.60.10
 
 # LangChain
 langchain
@@ -29,3 +29,6 @@ langchain-qdrant
 beautifulsoup4
 markdownify
 urllib3
+
+# Supabase
+supabase
