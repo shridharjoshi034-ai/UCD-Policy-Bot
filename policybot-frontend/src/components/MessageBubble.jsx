@@ -10,6 +10,7 @@ export default function MessageBubble({ message }) {
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+  const hasContent = text.trim().length > 0;
   const citations = message.metadata?.custom?.citations;
 
   const speakMessage = () => {
@@ -81,14 +82,23 @@ export default function MessageBubble({ message }) {
 
   return (
     <div className={`bubble-row ${isUser ? "right" : "left"}`}>
-      <div className={`bubble ${isUser ? "user" : "bot"}`}>
+      <div className={isUser ? "bubble user" : "bot-plain"}>
+
         <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {text}
-          </ReactMarkdown>
+          {!isUser && !hasContent ? (
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {text}
+            </ReactMarkdown>
+          )}
         </div>
 
-        {!isUser && (
+        {!isUser && hasContent && (
   <>
     <div className="bubble-actions">
       <button

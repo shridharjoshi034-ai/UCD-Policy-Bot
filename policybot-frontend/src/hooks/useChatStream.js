@@ -1,7 +1,23 @@
 import { useState } from "react";
 
+// TEMPORARY: seed data for visual QA, will be reverted after review.
+const TEST_MESSAGES = [
+  { role: "user", content: "What is the late submission policy for assignments?" },
+  {
+    role: "assistant",
+    content:
+      "## Late Submission Policy\n\nAssignments submitted after the deadline are subject to the following:\n\n- **0-24 hours late**: 10% deduction\n- **24-48 hours late**: 20% deduction\n- **Beyond 48 hours**: not accepted, unless an *extenuating circumstances* form has been approved.\n\nPlease contact your school office if you need an extension.",
+    citations: [
+      { title: "UCD Assessment Regulations 2025/26", source_url: "https://example.com/assessment-regs" },
+      { title: "School of Computer Science Late Policy", source_url: "https://example.com/cs-late-policy" },
+    ],
+  },
+  { role: "user", content: "Thanks! One more question about repeat exams." },
+  { role: "assistant", content: "", citations: [] },
+];
+
 export default function useChatStream() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(TEST_MESSAGES);
   const [isRunning, setIsRunning] = useState(false);
 
   const sendMessage = async (question) => {
