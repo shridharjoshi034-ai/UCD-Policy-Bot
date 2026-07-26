@@ -91,17 +91,28 @@ export default function ChatWindow() {
             </p>
         </div>
 
-          <button
-            onClick={toggleDarkMode}
-            role="switch"
-            aria-checked={darkMode}
-            aria-label="Toggle dark mode"
-            className={`theme-toggle ml-auto ${darkMode ? "dark" : ""}`}
-          >
-            <span className="theme-toggle-thumb">
-              {darkMode ? <MoonIcon /> : <SunIcon />}
-            </span>
-          </button>
+          <div className="ml-auto flex items-center gap-3">
+            <a
+              href="http://localhost:8000/admin"
+              target="_blank"
+              rel="noreferrer"
+              className="px-2.5 py-1 text-sm border rounded-lg"
+            >
+              Admin Login
+            </a>
+
+            <button
+              onClick={toggleDarkMode}
+              role="switch"
+              aria-checked={darkMode}
+              aria-label="Toggle dark mode"
+              className={`theme-toggle ${darkMode ? "dark" : ""}`}
+            >
+              <span className="theme-toggle-thumb">
+                {darkMode ? <MoonIcon /> : <SunIcon />}
+              </span>
+            </button>
+          </div>
         </header>
 
         <ThreadPrimitive.Root className="relative flex-1 min-h-0">
