@@ -5,6 +5,7 @@ pydantic
 httpx
 requests
 python-dotenv
+python-multipart
 
 # PDF Processing
 pymupdf4llm

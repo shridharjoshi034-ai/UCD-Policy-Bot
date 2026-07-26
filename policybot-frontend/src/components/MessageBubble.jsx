@@ -145,26 +145,20 @@ export default function MessageBubble({ message }) {
       </button>
     </div>
 
-    {citations && (
+    {citations && citations.length > 0 && (
       <div className="citations">
         <div className="citations-title">Sources:</div>
 
-        {citations.length > 0 ? (
-          citations.map((c, i) => (
-            <div key={i} className="citation-item">
-              <button
-                className="citation-link"
-                onClick={(e) => openCitationFile(c, e)}
-              >
-                📄 {c.title}
-              </button>
-            </div>
-          ))
-        ) : (
-          <div className="citation-empty">
-            No sources available
+        {citations.map((c, i) => (
+          <div key={i} className="citation-item">
+            <button
+              className="citation-link"
+              onClick={(e) => openCitationFile(c, e)}
+            >
+              📄 {c.title}
+            </button>
           </div>
-        )}
+        ))}
       </div>
     )}
 
