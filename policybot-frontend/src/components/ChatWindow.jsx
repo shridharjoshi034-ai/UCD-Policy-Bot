@@ -133,7 +133,7 @@ export default function ChatWindow() {
             </div>
           ) : (
             <ThreadPrimitive.Viewport className="absolute inset-0 overflow-y-auto px-4 chat-scroll message-fade-mask">
-              <div className="max-w-4xl mx-auto pt-16 pb-40">
+              <div className="max-w-4xl mx-auto pt-24 pb-40">
                 <MessageList />
               </div>
             </ThreadPrimitive.Viewport>
