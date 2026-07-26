@@ -39,3 +39,41 @@
   -webkit-mask-repeat: no-repeat;
 }
 
+.theme-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 26px;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  background: #d1d5db;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+.theme-toggle.dark {
+  background: #334155;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.theme-toggle.dark .theme-toggle-thumb {
+  transform: translateX(22px);
+  color: #60a5fa;
+}
+
