@@ -93,7 +93,7 @@ export default function ChatWindow() {
 
           <div className="ml-auto flex items-center gap-3">
             <a
-              href="http://localhost:8000/admin"
+              href="http://localhost:8000/admin/dashboard"
               target="_blank"
               rel="noreferrer"
               className="px-2.5 py-1 text-sm border rounded-lg"
