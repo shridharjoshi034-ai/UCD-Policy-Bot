@@ -24,6 +24,24 @@ function RegenerateIcon() {
   );
 }
 
+function SpeakerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="3 9 3 15 8 15 13 20 13 4 8 9 3 9" fill="currentColor" stroke="none" />
+      <path d="M16.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M19 6a8 8 0 0 1 0 12" />
+    </svg>
+  );
+}
+
+function StopSpeakingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+      <rect x="5" y="5" width="14" height="14" rx="2" />
+    </svg>
+  );
+}
+
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const text = message.content
@@ -31,8 +49,13 @@ export default function MessageBubble({ message }) {
     .map((part) => part.text)
     .join("");
   const hasContent = text.trim().length > 0;
+  // "running" is only ever true for the last message while the thread is
+  // actually streaming into it — earlier stopped-empty messages stay
+  // "complete"/"incomplete" even while a later message is running.
+  const isMessageRunning = message.status?.type === "running";
   const citations = message.metadata?.custom?.citations;
   const [copied, setCopied] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const copyMessage = async () => {
     try {
@@ -47,6 +70,7 @@ export default function MessageBubble({ message }) {
   const speakMessage = () => {
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
+      setIsSpeaking(false);
       return;
     }
 
@@ -66,7 +90,11 @@ export default function MessageBubble({ message }) {
       speech.voice = englishVoice;
     }
 
+    speech.onend = () => setIsSpeaking(false);
+    speech.onerror = () => setIsSpeaking(false);
+
     window.speechSynthesis.speak(speech);
+    setIsSpeaking(true);
   };
 
   // Open a file on click — mimics the dashboard's openFileOnSupabase pattern:
@@ -117,11 +145,15 @@ export default function MessageBubble({ message }) {
 
         <div className="markdown-body">
           {!isUser && !hasContent ? (
-            <div className="typing-indicator">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+            isMessageRunning ? (
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            ) : (
+              <span className="stopped-note">Response stopped</span>
+            )
           ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {text}
@@ -135,13 +167,10 @@ export default function MessageBubble({ message }) {
       <button
         className="speak-btn"
         onClick={speakMessage}
-        title={
-          window.speechSynthesis.speaking
-            ? "Stop reading"
-            : "Read aloud"
-        }
+        title={isSpeaking ? "Stop reading" : "Read aloud"}
       >
-        Read aloud 🔊
+        {isSpeaking ? <StopSpeakingIcon /> : <SpeakerIcon />}
+        {isSpeaking ? "Stop reading" : "Read aloud"}
       </button>
     </div>
 

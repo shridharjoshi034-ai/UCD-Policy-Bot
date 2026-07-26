@@ -137,6 +137,14 @@
   opacity: 0.85;
 }
 
+.stopped-note {
+  display: inline-block;
+  padding: 4px 0;
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.6;
+}
+
 .typing-indicator {
   display: flex;
   align-items: center;
