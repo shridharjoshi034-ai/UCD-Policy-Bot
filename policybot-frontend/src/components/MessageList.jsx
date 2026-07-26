@@ -1,30 +1,13 @@
-import { useEffect, useRef } from "react";
+import { ThreadPrimitive } from "@assistant-ui/react";
 import MessageBubble from "./MessageBubble";
 import "../styles/MessageList.css";
 
-export default function MessageList({ messages }) {
-
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-    });
-  }, [messages]);
-
+export default function MessageList() {
   return (
     <div className="message-list">
-
-      {messages.map((msg, i) => (
-        <MessageBubble 
-          key={i}
-          message={msg}
-        />
-      ))}
-
-      <div ref={bottomRef} />
-
+      <ThreadPrimitive.Messages>
+        {({ message }) => <MessageBubble message={message} />}
+      </ThreadPrimitive.Messages>
     </div>
   );
 }
