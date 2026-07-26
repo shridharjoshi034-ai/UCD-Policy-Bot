@@ -21,21 +21,7 @@ export default function useChatStream() {
   const [isRunning, setIsRunning] = useState(false);
   const abortControllerRef = useRef(null);
 
-  const sendMessage = async (question) => {
-    // Add user message
-    setMessages((prev) => [
-    ...prev,
-    {
-        role: "user",
-        content: question,
-    },
-    {
-        role: "assistant",
-        content: "",
-        citations: [],
-    },
-    ]);
-
+  const streamResponse = async (question) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -158,6 +144,32 @@ export default function useChatStream() {
     }
   };
 
+  const sendMessage = async (question) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: question },
+      { role: "assistant", content: "", citations: [] },
+    ]);
+
+    await streamResponse(question);
+  };
+
+  const regenerateResponse = async () => {
+    const lastIndex = messages.length - 1;
+    if (lastIndex < 1 || messages[lastIndex].role !== "assistant") return;
+
+    const question = messages[lastIndex - 1]?.content;
+    if (!question) return;
+
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[lastIndex] = { role: "assistant", content: "", citations: [] };
+      return updated;
+    });
+
+    await streamResponse(question);
+  };
+
   const cancelMessage = () => {
     abortControllerRef.current?.abort();
   };
@@ -165,6 +177,7 @@ export default function useChatStream() {
   return {
     messages,
     sendMessage,
+    regenerateResponse,
     isRunning,
     cancelMessage,
   };

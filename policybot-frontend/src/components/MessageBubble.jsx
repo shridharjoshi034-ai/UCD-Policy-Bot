@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActionBarPrimitive } from "@assistant-ui/react";
 import "../styles/MessageBubble.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +9,15 @@ function CopyIcon() {
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="9" y="9" width="12" height="12" rx="2" />
       <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function RegenerateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <polyline points="21 3 21 9 15 9" />
     </svg>
   );
 }
@@ -174,6 +184,13 @@ export default function MessageBubble({ message }) {
       >
         <CopyIcon />
       </button>
+      <ActionBarPrimitive.Reload
+        className="icon-btn-plain"
+        title="Regenerate response"
+        aria-label="Regenerate response"
+      >
+        <RegenerateIcon />
+      </ActionBarPrimitive.Reload>
       {copied && (
         <span className="copy-toast">Message copied to clipboard</span>
       )}

@@ -34,8 +34,8 @@ function MoonIcon() {
 }
 
 export default function ChatWindow() {
-  const { messages, sendMessage, isRunning, cancelMessage } = useChatStream();
-  const runtime = useChatRuntime({ messages, sendMessage, isRunning, cancelMessage });
+  const { messages, sendMessage, isRunning, cancelMessage, regenerateResponse } = useChatStream();
+  const runtime = useChatRuntime({ messages, sendMessage, isRunning, cancelMessage, regenerateResponse });
   const [darkMode, setDarkMode] = useState(false);
   const [started, setStarted] = useState(false);
 
