@@ -4,6 +4,8 @@ import "../styles/MessageBubble.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const API_BASE = "http://localhost:8000";
+
 function CopyIcon() {
   return (
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -150,27 +152,18 @@ export default function MessageBubble({ message }) {
         {citations.length > 0 ? (
           citations.map((c, i) => (
             <div key={i} className="citation-item">
-              <a href={c.source_url} target="_blank" rel="noreferrer">
-                🔗 {c.title}
-              </a>
+              <button
+                className="citation-link"
+                onClick={(e) => openCitationFile(c, e)}
+              >
+                📄 {c.title}
+              </button>
             </div>
-
-            {message.citations && message.citations.length > 0 && (
-              <div className="citations">
-                <div className="citations-title">Sources:</div>
-                {message.citations.map((c, i) => (
-                  <div key={i} className="citation-item">
-                    <button
-                      className="citation-link"
-                      onClick={(e) => openCitationFile(c, e)}
-                    >
-                      📄 {c.title}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+          ))
+        ) : (
+          <div className="citation-empty">
+            No sources available
+          </div>
         )}
       </div>
     )}
