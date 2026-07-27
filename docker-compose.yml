@@ -1,5 +1,6 @@
 services:
   backend:
+    image: ashutosh279/ucd-policybot:backend-latest
     build: 
       context: ./backend
       dockerfile: Dockerfile
@@ -17,6 +18,7 @@ services:
       - langfuse-server
 
   frontend:
+    image: ashutosh279/ucd-policybot:frontend-latest
     build:
       context: ./policybot-frontend
       dockerfile: Dockerfile
