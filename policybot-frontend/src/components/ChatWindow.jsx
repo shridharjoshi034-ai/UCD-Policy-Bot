@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive } from "@assistant-ui/react";
 import useChatStream from "../hooks/useChatStream";
 import useChatRuntime from "../runtime/useChatRuntime";
@@ -37,16 +37,33 @@ export default function ChatWindow() {
   const { messages, sendMessage, isRunning, cancelMessage, regenerateResponse } = useChatStream();
   const runtime = useChatRuntime({ messages, sendMessage, isRunning, cancelMessage, regenerateResponse });
   const [darkMode, setDarkMode] = useState(false);
-  const [started, setStarted] = useState(false);
+  const rootRef = useRef(null);
+  const heroSlotRef = useRef(null);
+  const [heroTop, setHeroTop] = useState(null);
+  const started = messages.length > 0;
 
   const toggleDarkMode = () => {
     setDarkMode((prev) => !prev);
   };
 
-  const handleSend = (msg) => {
-    if (!started) setStarted(true);
-    sendMessage(msg);
-  };
+  // Measure the actual gap between the heading and the suggested questions
+  // so the hero-state input lands exactly in that slot, instead of a guessed
+  // pixel offset — recomputed on resize and whenever the empty-state layout
+  // (re)appears.
+  useLayoutEffect(() => {
+    if (started) return;
+
+    const measure = () => {
+      if (!heroSlotRef.current || !rootRef.current) return;
+      const slotRect = heroSlotRef.current.getBoundingClientRect();
+      const rootRect = rootRef.current.getBoundingClientRect();
+      setHeroTop(slotRect.top - rootRect.top);
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [started]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -115,20 +132,26 @@ export default function ChatWindow() {
           </div>
         </header>
 
-        <ThreadPrimitive.Root className="relative flex-1 min-h-0">
+        <ThreadPrimitive.Root ref={rootRef} className="relative flex-1 min-h-0">
           {/* BODY */}
           {messages.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-              <h2 className="text-3xl font-bold mb-2">
-                Hey There, Welcome to UCD PolicyBot
-              </h2>
+              <div className="text-center">
+                <h2 className="text-3xl font-bold mb-2">
+                  Hey There, Welcome to UCD PolicyBot
+                </h2>
 
-              <p className="text-gray-500 mb-6 text-center">
-                Ask any academic or administrative question
-              </p>
+                <p className="text-gray-500 mb-6 text-center">
+                  Ask any academic or administrative question
+                </p>
+              </div>
+
+              {/* Reserves the gap the hero-state input actually sits in —
+                  height matches the composer bar's rendered footprint. */}
+              <div ref={heroSlotRef} className="w-full max-w-2xl h-16 mb-6" />
 
               <div className="w-full max-w-2xl">
-                <SuggestedQuestions onSelect={handleSend} />
+                <SuggestedQuestions onSelect={sendMessage} />
               </div>
             </div>
           ) : (
@@ -140,7 +163,14 @@ export default function ChatWindow() {
           )}
 
           {/* INPUT */}
-          <div className="absolute bottom-6 inset-x-0 z-20 px-4">
+          <div
+            className="absolute inset-x-0 z-20 px-4 transition-[top,transform] duration-700 ease-in-out"
+            style={
+              started
+                ? { top: "100%", transform: "translateY(calc(-100% - 24px))" }
+                : { top: heroTop != null ? `${heroTop}px` : "50%", transform: "translateY(0)" }
+            }
+          >
             <InputBox />
           </div>
         </ThreadPrimitive.Root>
