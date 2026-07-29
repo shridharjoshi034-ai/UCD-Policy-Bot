@@ -2,10 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import chat, health, sources, admin
 from app.observability.tracer import get_tracer
-
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="UCD PolicyBot Backend")
-
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

@@ -41,7 +41,45 @@ function StopSpeakingIcon() {
     </svg>
   );
 }
+function cleanTextForSpeech(markdown) {
+  return markdown
 
+    // Convert headings into natural pauses
+    .replace(/^#{1,6}\s*(.*)$/gm, "$1.")
+
+    // Remove bold and italic markers
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+
+    // Remove inline code formatting
+    .replace(/`([^`]+)`/g, "$1")
+
+    // Convert markdown links
+    // [Assessment Policy](url) -> Assessment Policy
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+
+    // Remove bullet symbols
+    .replace(/^\s*[-*+]\s+/gm, "")
+
+    // Remove numbered list markers
+    .replace(/^\s*\d+\.\s+/gm, "")
+
+    // Remove block quotes
+    .replace(/^>\s+/gm, "")
+
+    // Remove markdown tables formatting
+    .replace(/\|/g, " ")
+
+    // Remove horizontal separators
+    .replace(/^[-*_]{3,}$/gm, "")
+
+    // Remove extra whitespace
+    .replace(/\n{2,}/g, "\n")
+
+    .trim();
+}
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const text = message.content
@@ -73,8 +111,9 @@ export default function MessageBubble({ message }) {
       setIsSpeaking(false);
       return;
     }
-
-    const speech = new SpeechSynthesisUtterance(text);
+    
+    const cleanSpeechText = cleanTextForSpeech(text);
+    const speech = new SpeechSynthesisUtterance(cleanSpeechText);
 
     speech.rate = 1;
     speech.pitch = 1;
