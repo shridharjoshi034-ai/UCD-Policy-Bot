@@ -76,31 +76,31 @@ export default function ChatWindow() {
   >
         {/* HEADER */}
         <header
-          className={`absolute top-0 inset-x-0 z-20 flex items-center gap-3 px-4 py-2 backdrop-blur-sm border-b transition-colors duration-300 ${
+          className={`absolute top-0 inset-x-0 z-20 flex items-center gap-4 px-5 py-3 backdrop-blur-sm border-b transition-colors duration-300 ${
             darkMode
-              ? "bg-[#0F172A]/5 border-white/10"
+              ? "bg-[#F8FAFC]/5 border-white/10"
               : "bg-[#F8FAFC]/5 border-black/5"
           }`}
         >
           <img
               src={ucdLogo}
               alt="UCD Logo"
-              className="w-10 h-10 object-contain"
+              className="w-16 h-16 object-contain"
           />
 
           <div>
-            <h1 className="text-base font-semibold leading-tight">
+            <h1 className="text-lg font-semibold leading-tight">
               University College Dublin
             </h1>
-            <p className="text-xs text-gray-500 leading-tight">
+            <p className="text-sm text-gray-500 leading-tight">
               An Coláiste Ollscoile, Baile Átha Cliath
             </p>
             <p
               style={{
                 color: "#004077",
                 fontWeight: 700,
-                letterSpacing: "0.08em",
-                fontSize: "10px",
+                letterSpacing: "0.1em",
+                fontSize: "11px",
                 marginTop: "1px"
               }}
             >
@@ -156,7 +156,7 @@ export default function ChatWindow() {
             </div>
           ) : (
             <ThreadPrimitive.Viewport className="absolute inset-0 overflow-y-auto px-4 chat-scroll message-fade-mask">
-              <div className="max-w-4xl mx-auto pt-24 pb-40">
+              <div className="max-w-4xl mx-auto pt-28 pb-40">
                 <MessageList />
               </div>
             </ThreadPrimitive.Viewport>
