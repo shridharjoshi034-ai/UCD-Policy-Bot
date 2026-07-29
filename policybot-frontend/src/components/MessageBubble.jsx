@@ -42,15 +42,32 @@ function StopSpeakingIcon() {
   );
 }
 function cleanTextForSpeech(markdown) {
-  return markdown
+  const emojiReplacements = {
+    "✅": "Check.",
+    "❌": "Cross.",
+    "⚠️": "Warning.",
+    "ℹ️": "Information.",
+    "📌": "Note.",
+  };
 
-    // Convert headings into natural pauses
+  let text = markdown;
+
+  // Replace meaningful emojis with spoken words
+  Object.entries(emojiReplacements).forEach(([emoji, replacement]) => {
+    text = text.replaceAll(emoji, replacement);
+  });
+
+  return text
+
+    // Convert Markdown headings into natural pauses
     .replace(/^#{1,6}\s*(.*)$/gm, "$1.")
 
-    // Remove bold and italic markers
+    // Remove bold formatting
     .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
+
+    // Remove italic formatting
+    .replace(/\*(.*?)\*/g, "$1")
     .replace(/_(.*?)_/g, "$1")
 
     // Remove inline code formatting
@@ -60,23 +77,29 @@ function cleanTextForSpeech(markdown) {
     // [Assessment Policy](url) -> Assessment Policy
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
 
-    // Remove bullet symbols
+    // Remove bullet points
     .replace(/^\s*[-*+]\s+/gm, "")
 
-    // Remove numbered list markers
+    // Remove numbered lists
     .replace(/^\s*\d+\.\s+/gm, "")
 
-    // Remove block quotes
+    // Remove blockquotes
     .replace(/^>\s+/gm, "")
 
-    // Remove markdown tables formatting
+    // Remove markdown table separators
     .replace(/\|/g, " ")
 
-    // Remove horizontal separators
+    // Remove horizontal lines
     .replace(/^[-*_]{3,}$/gm, "")
 
-    // Remove extra whitespace
-    .replace(/\n{2,}/g, "\n")
+    // Remove remaining emojis
+    .replace(
+      /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu,
+      ""
+    )
+
+    // Replace multiple spaces/newlines
+    .replace(/\s+/g, " ")
 
     .trim();
 }
