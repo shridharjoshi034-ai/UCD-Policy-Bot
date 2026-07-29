@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolicyBot Admin Dashboard</title>
+<style>
+  /* ── Light theme (default) ───────────────────────────────── */
+  :root {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text2: #64748b;
+    --text3: #94a3b8;
+    --accent: #6366f1;
+    --accent2: #4f46e5;
+    --accent-light: #eef2ff;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #d97706;
+    --orange: #ea580c;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
+    --transition: 180ms ease;
+    --terminal-bg: #1e293b;
+    --terminal-text: #e2e8f0;
+  }
+  [data-theme="dark"] {
+    --bg: #0b0f19;
+    --surface: #151a28;
+    --surface2: #1c2335;
+    --border: #262e40;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --accent-light: #1e1b4b;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --shadow: 0 4px 24px rgba(0,0,0,.4);
+    --terminal-bg: #0a0d14;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background var(--transition), color var(--transition);
+  }
+
+  /* ── Login overlay ──────────────────────────────────────── */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: opacity .3s, visibility .3s;
+  }
+  .login-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px 36px;
+    box-shadow: var(--shadow);
+    width: 360px;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .login-card .logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .login-card h2 { font-size: 1rem; color: var(--text2); margin-bottom: 24px; font-weight: 400; }
+  .login-card input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .9rem;
+    margin-bottom: 12px;
+    transition: border var(--transition);
+  }
+  .login-card input:focus { outline: none; border-color: var(--accent); }
+  .login-card .login-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .login-card .login-btn:hover { background: var(--accent2); }
+  .login-error { color: var(--red); font-size: .8rem; margin-top: 8px; min-height: 20px; }
+
+  /* ── Header ──────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    transition: background var(--transition);
+  }
+  .header .logo {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-right: auto;
+  }
+  .header .badge {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .header .badge.error { background: var(--red); }
+  .header .badge.ok { background: var(--green); }
+
+  .theme-toggle {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--transition);
+    font-size: .85rem;
+    color: var(--text2);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--text); }
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  /* ── Main layout ─────────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  .sidebar {
+    width: 230px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 16px 12px;
+    gap: 4px;
+    transition: background var(--transition);
+  }
+  .sidebar .section-title {
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text3);
+    padding: 8px 10px 4px;
+    margin-top: 8px;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: .875rem;
+    transition: all var(--transition);
+    text-align: left;
+    width: 100%;
+  }
+  .tab-btn:hover { background: var(--surface2); color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .tab-btn svg { width:18px; height:18px; flex-shrink:0; }
+
+  /* ── Content area ────────────────────────────────────────── */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tab-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    gap: 20px;
+  }
+  .tab-panel.active { display: flex; }
+
+  /* ── Status bar ──────────────────────────────────────────── */
+  .status-bar {
+    padding: 8px 24px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: .8rem;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    transition: background var(--transition);
+  }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.disconnected { background: var(--red); }
+
+  /* ── Cards ───────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    transition: background var(--transition);
+  }
+  .card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 svg { width:20px; height:20px; color: var(--accent2); }
+
+  /* ── Form elements ───────────────────────────────────────── */
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+  .form-group label {
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+  }
+  .form-group input, .form-group select {
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .875rem;
+    transition: border var(--transition);
+  }
+  .form-group input:focus { outline:none; border-color: var(--accent); }
+
+  /* ── Buttons ─────────────────────────────────────────────── */
+  .btn {
+    padding: 9px 18px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent2); transform: translateY(-1px); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; transform: translateY(-1px); }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover:not(:disabled) { background: #059669; transform: translateY(-1px); }
+  .btn-orange { background: var(--orange); color: #fff; }
+  .btn-orange:hover:not(:disabled) { background: #ea580c; transform: translateY(-1px); }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .btn-outline:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: .75rem; }
+
+  /* ── File table ──────────────────────────────────────────── */
+  .file-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+  }
+  .file-table th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .7rem;
+  }
+  .file-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table tbody tr {
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .file-table tbody tr:hover td { background: var(--surface2); }
+  .file-table tbody tr.dbl-click-hint:hover::after {
+    content: " double-click to open";
+    font-size: .65rem;
+    color: var(--text3);
+    font-style: italic;
+  }
+  .file-row-actions { display: flex; gap: 6px; }
+  .file-icon { color: var(--accent2); }
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text3);
+    cursor: default;
+  }
+
+  /* ── Upload zone ─────────────────────────────────────────── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    background: var(--surface2);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .upload-zone svg { width: 40px; height: 40px; color: var(--text3); margin-bottom: 8px; }
+  .upload-zone p { color: var(--text2); font-size: .9rem; }
+  .upload-zone .small { color: var(--text3); font-size: .75rem; margin-top: 4px; }
+
+  /* ── Terminal ────────────────────────────────────────────── */
+  .terminal {
+    background: var(--terminal-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    font-size: .8rem;
+    line-height: 1.55;
+    overflow-y: auto;
+    padding: 16px;
+    flex: 1;
+    min-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #e2e8f0;
+  }
+  .terminal .log-line { padding: 1px 0; }
+  .terminal .log-info  { color: #93c5fd; }
+  .terminal .log-warning { color: #fcd34d; }
+  .terminal .log-error { color: #fca5a5; }
+  .terminal .log-debug { color: #94a3b8; }
+  .terminal .prompt { color: #34d399; user-select:none; }
+
+  /* ── Toast ───────────────────────────────────────────────── */
+  .toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    padding: 12px 20px;
+    border-radius: var(--radius-sm);
+    font-size: .85rem;
+    font-weight: 500;
+    animation: slideIn .25s ease;
+    box-shadow: var(--shadow);
+    max-width: 400px;
+  }
+  .toast.success { background: #065f46; color: #d1fae5; }
+  .toast.error { background: #7f1d1d; color: #fecaca; }
+  .toast.info { background: #1e3a5f; color: #dbeafe; }
+  @keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .tab-btn span { display: none; }
+    .form-row { flex-direction: column; }
+    .main { flex-direction: column; }
+    .sidebar { flex-direction: row; overflow-x: auto; width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; }
+    .sidebar .section-title { display: none; }
+  }
+
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar .fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    animation: progressPulse 1.5s ease-in-out infinite;
+    width: 100%;
+  }
+  @keyframes progressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+
+  .logout-btn {
+    font-size: .7rem;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+  .stop-btn {
+    background: transparent;
+    border: 1px solid var(--red);
+    border-radius: 99px;
+    padding: 4px 12px;
+    font-size: .75rem;
+    color: var(--red);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all var(--transition);
+  }
+  .stop-btn:hover { background: var(--red); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ LOGIN OVERLAY ═══════════════ -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="logo">⚡ PolicyBot Admin</div>
+    <h2>Sign in to continue</h2>
+    <input type="text" id="loginUser" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div class="header">
+  <div class="logo">⚡ PolicyBot Admin</div>
+  <div class="badge error" id="connectionBadge">CHECKING…</div>
+  <button class="stop-btn" onclick="stopAllProcesses()" id="stopAllBtn" title="1st click: stop active task | 2nd click (within 3s): shutdown backend | 3rd: force exit">
+    ⏹ Stop All
+  </button>
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  </button>
+  <button class="logout-btn" onclick="doLogout()">Logout</button>
+</div>
+
+<!-- ═══════════════ STATUS BAR ═══════════════ -->
+<div class="status-bar" id="statusBar">
+  <span class="status-dot disconnected" id="statusDot"></span>
+  <span id="statusLabel">Checking connection…</span>
+  <span style="margin-left:auto;display:flex;gap:16px;align-items:center">
+    <span style="font-size:.75rem;color:var(--text3);display:flex;align-items:center;gap:5px" id="qdrantMetric">
+      <span class="status-dot disconnected" id="qdrantDot"></span>
+      <span id="qdrantLabel">Qdrant: checking…</span>
+    </span>
+  </span>
+</div>
+
+<!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
+<div class="main">
+  <nav class="sidebar">
+    <div class="section-title">Operations</div>
+    <button class="tab-btn active" data-tab="files">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <span>File Browser</span>
+    </button>
+    <button class="tab-btn" data-tab="upload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span>Upload</span>
+    </button>
+    <button class="tab-btn" data-tab="operations">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span>Other Operations</span>
+    </button>
+    <div class="section-title">Monitor</div>
+    <button class="tab-btn" data-tab="terminal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>Live Terminal</span>
+    </button>
+  </nav>
+
+  <div class="content">
+    <!-- ═══ TAB: FILE BROWSER ═══ -->
+    <div class="tab-panel active" id="tab-files">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+          Bucket Files
+        </h2>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="listFiles()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSelectedFiles()" id="deleteSelectedBtn" disabled>
+            🗑️ Delete Selected (<span id="selectedCount">0</span>)
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="downloadSelectedFiles()" id="downloadSelectedBtn" disabled>
+            📥 Download Selected
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAllFiles()" id="deleteAllBtn">
+            🗑️ Delete All Files
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="emptySupabaseBucket()" id="emptyBucketBtn">
+            🪣 Empty Supabase Bucket
+          </button>
+          <span style="font-size:.8rem;color:var(--text3);align-self:center" id="fileCount"></span>
+        </div>
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="fileSearch" placeholder="🔍 Search files…"
+                 style="width:100%;max-width:420px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:.85rem;transition:border var(--transition)"
+                 oninput="filterFileTable()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+          <select id="fileTypeFilter" onchange="filterFileTable()"
+                  style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:.85rem;cursor:pointer;transition:border var(--transition)"
+                  onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            <option value="all">📁 All files</option>
+            <option value="pdf">📄 PDFs only</option>
+            <option value="md">📝 Markdown only</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="file-table">
+            <thead>
+              <tr><th style="width:36px"><input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this)" title="Select all"></th><th>File</th><th style="width:120px">Actions</th></tr>
+            </thead>
+            <tbody id="fileTableBody">
+              <tr><td colspan="3" class="empty-state">
+                Click Refresh to list files from Supabase
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="progress-bar" id="filesProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: UPLOAD ═══ -->
+    <div class="tab-panel" id="tab-upload">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload Files
+        </h2>
+        <div class="form-row" style="margin-bottom:16px">
+          <div class="form-group" style="max-width:200px">
+            <label>Target Folder (optional)</label>
+            <input type="text" id="uploadFolder" placeholder="e.g. policies/">
+          </div>
+        </div>
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4M12 4L8 8M12 4l4 4"/><path d="M20 16v1a3 3 0 01-3 3H7a3 3 0 01-3-3v-1"/></svg>
+          <p>Drop files here or click to browse</p>
+          <p class="small">Supports PDF, MD, TXT, JSON, CSV</p>
+        </div>
+        <input type="file" id="fileInput" style="display:none" multiple
+               accept=".pdf,.md,.txt,.json,.csv,.docx,.xlsx" onchange="handleFileSelect(event)">
+        <div id="uploadPreview" style="margin-top:12px;font-size:.85rem;color:var(--text2)"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="uploadFiles(false)" id="uploadBtn">
+            ⬆️ Upload
+          </button>
+          <button class="btn btn-green" onclick="uploadFiles(true)" id="uploadConvertBtn">
+            ⬆️ Upload + Convert to MD
+          </button>
+        </div>
+        <div class="progress-bar" id="uploadProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: OTHER OPERATIONS ═══ -->
+    <div class="tab-panel" id="tab-operations">
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          UCD Policy Scraper
+        </h2>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
+          Runs the full UCD scraper pipeline: governance PDFs + student guides → Supabase Storage.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="triggerScrape()" id="scrapeBtn">
+            🌐 Run Scraper
+          </button>
+          <button class="btn btn-orange" onclick="triggerScrapeAndIngest()" id="scrapeIngestBtn">
+            🌐🔄 Scraper + Re-Ingest
+          </button>
+        </div>
+        <div class="progress-bar" id="scrapeProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+
+      <div class="card">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Re-Ingestion
+        </h2>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">
+          Downloads ALL Markdown files from Supabase storage, re-chunks, re-embeds, and upserts into Qdrant.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-orange" onclick="triggerIngestion()" id="ingestBtn">
+            🔄 Re-Ingest (Clear Qdrant → Ingest)
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQdrantCollection()" id="deleteQdrantBtn">
+            💥 Delete Qdrant Collection
+          </button>
+        </div>
+        <div class="progress-bar" id="ingestProgress" style="display:none"><div class="fill"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: LIVE TERMINAL ═══ -->
+    <div class="tab-panel" id="tab-terminal" style="padding-top:0">
+      <div class="card" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0">
+          <h2 style="margin:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Live Terminal
+          </h2>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="clearTerminal()">Clear</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleAutoScroll()" id="autoScrollBtn">📌 Auto-scroll: ON</button>
+          </div>
+        </div>
+        <div class="terminal" id="terminal">
+          <div class="log-line"><span class="prompt">$ </span><span class="log-info">Terminal ready — please sign in…</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script>
+// ── Auth state ────────────────────────────────────────────────────────────────
+let adminToken = sessionStorage.getItem('policybot_admin_token') || '';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let selectedFiles = [];
+let checkedFiles = new Set();
+let allFiles = [];
+let autoScroll = true;
+let eventSource = null;
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+function showLogin() {
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginUser').focus();
+}
+
+function hideLogin() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+
+  if (!username || !password) {
+    errEl.textContent = 'Please enter both username and password.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      adminToken = data.token;
+      sessionStorage.setItem('policybot_admin_token', adminToken);
+      errEl.textContent = '';
+      hideLogin();
+      checkStatus();
+      startLogStream();
+    } else {
+      errEl.textContent = data.message || 'Invalid credentials';
+    }
+  } catch (e) {
+    errEl.textContent = 'Cannot reach backend. Is the server running?';
+  }
+}
+
+async function doLogout() {
+  if (adminToken) {
+    try {
+      await fetch('/admin/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: adminToken }),
+      });
+    } catch (e) {}
+  }
+  adminToken = '';
+  sessionStorage.removeItem('policybot_admin_token');
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('terminal').innerHTML =
+    '<div class="log-line"><span class="prompt">$ </span><span class="log-info">Signed out.</span></div>';
+  updateConnectionUI(false, 'Signed out');
+  showLogin();
+}
+
+// ── Theme management ─────────────────────────────────────────────────────────
+function getTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'light';
+}
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('policybot_admin_theme', theme);
+  updateThemeIcon();
+}
+function toggleTheme() {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+function updateThemeIcon() {
+  const icon = document.getElementById('themeIcon');
+  if (getTheme() === 'dark') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
+}
+(function() {
+  const saved = localStorage.getItem('policybot_admin_theme');
+  if (saved === 'dark') setTheme('dark');
+  else setTheme('light');
+})();
+
+// ── Auth-aware API helpers ───────────────────────────────────────────────────
+async function apiCall(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (adminToken) {
+    headers['X-Admin-Token'] = adminToken;
+  }
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  // Handle 401 — token expired or invalid
+  if (res.status === 401) {
+    adminToken = '';
+    sessionStorage.removeItem('policybot_admin_token');
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    showLogin();
+    document.getElementById('loginError').textContent = 'Session expired. Please log in again.';
+    throw new Error('Session expired — please log in again');
+  }
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 300) || `HTTP ${res.status}: ${res.statusText}`);
+  }
+  if (!res.ok) throw new Error(data.message || data.detail || 'Request failed');
+  return data;
+}
+
+function toast(msg, type = 'info') {
+  const container = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+
+function showProgress(id) { document.getElementById(id).style.display = 'block'; }
+function hideProgress(id) { document.getElementById(id).style.display = 'none'; }
+function setBtnDisabled(id, disabled) { document.getElementById(id).disabled = disabled; }
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    switchToTab(btn.dataset.tab);
+  });
+});
+
+function switchToTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + tabName);
+  });
+}
+
+// ── Connection status ────────────────────────────────────────────────────────
+async function checkStatus() {
+  if (!adminToken) return;
+  try {
+    const data = await fetch('/admin/supabase/status', {
+      headers: { 'X-Admin-Token': adminToken }
+    }).then(r => r.json());
+    const ok = data.status === 'ok';
+    updateConnectionUI(ok, data.message || data.bucket || '');
+    if (ok) {
+      appendLogLine('info', '✅ Supabase connected — ' + data.message);
+    }
+  } catch (e) {
+    updateConnectionUI(false, 'Cannot reach backend');
+    appendLogLine('error', '⚠️ Cannot reach backend API');
+  }
+  fetchQdrantStats();
+}
+
+async function fetchQdrantStats() {
+  try {
+    const res = await fetch('/admin/qdrant/stats');
+    const data = await res.json();
+    const dot = document.getElementById('qdrantDot');
+    const label = document.getElementById('qdrantLabel');
+    if (data.exists) {
+      dot.className = 'status-dot connected';
+      const files = data.unique_files || 0;
+      label.textContent = `Qdrant: ${data.collection} · ${data.point_count.toLocaleString()} vectors, ${files} files`;
+    } else if (data.status === 'ok') {
+      dot.className = 'status-dot disconnected';
+      label.textContent = `Qdrant: ${data.collection} (empty)`;
+    } else {
+      dot.className = 'status-dot disconnected';
+      label.textContent = `Qdrant: unreachable`;
+    }
+  } catch (e) {
+    const dot = document.getElementById('qdrantDot');
+    const label = document.getElementById('qdrantLabel');
+    if (dot) dot.className = 'status-dot disconnected';
+    if (label) label.textContent = 'Qdrant: unreachable';
+  }
+}
+
+function updateConnectionUI(isConnected, label) {
+  const badge = document.getElementById('connectionBadge');
+  const dot = document.getElementById('statusDot');
+  const statusLabel = document.getElementById('statusLabel');
+  if (isConnected) {
+    badge.className = 'badge ok';
+    badge.textContent = 'CONNECTED';
+    dot.className = 'status-dot connected';
+  } else {
+    badge.className = 'badge error';
+    badge.textContent = 'DISCONNECTED';
+    dot.className = 'status-dot disconnected';
+  }
+  statusLabel.textContent = label || (isConnected ? 'Connected' : 'Not connected');
+}
+
+// ── File operations ──────────────────────────────────────────────────────────
+async function listFiles() {
+  showProgress('filesProgress');
+  fetchQdrantStats();
+  try {
+    const data = await apiCall('POST', '/admin/supabase/files');
+    renderFileTable(data.files || []);
+    document.getElementById('fileCount').textContent = `${data.files.length} file(s)`;
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideProgress('filesProgress');
+  }
+}
+
+function renderFileTable(files) {
+  allFiles = files;
+  const tbody = document.getElementById('fileTableBody');
+  if (files.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">📭 No files found in bucket</td></tr>';
+    document.getElementById('fileSearch').value = '';
+    return;
+  }
+  checkedFiles.clear();
+  document.getElementById('selectAllCb').checked = false;
+  updateSelectedCount();
+  tbody.innerHTML = files.map(f => {
+    const ext = f.split('.').pop().toLowerCase();
+    const icons = { pdf:'📄', md:'📝', txt:'📃', json:'{ }', csv:'📊', docx:'📄', xlsx:'📊' };
+    const icon = icons[ext] || '📁';
+    const esc = escapeHtml(f);
+    return `<tr class="file-row" data-filename="${esc}" ondblclick="openFileOnSupabase('${esc}')" title="Double-click to open on Supabase">
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="file-cb" value="${esc}" onchange="onFileCheck(this)"></td>
+      <td><span class="file-icon">${icon}</span> ${esc}</td>
+      <td onclick="event.stopPropagation()">
+        <div class="file-row-actions">
+          <button class="btn btn-outline btn-sm" onclick="downloadFile('${esc}')" title="Download">⬇️</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteFile('${esc}')" title="Delete">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  filterFileTable();
+}
+
+function filterFileTable() {
+  const q = (document.getElementById('fileSearch').value || '').toLowerCase().trim();
+  const filter = document.getElementById('fileTypeFilter').value;
+  document.querySelectorAll('#fileTableBody .file-row').forEach(row => {
+    const name = (row.dataset.filename || '').toLowerCase();
+    const ext = name.split('.').pop();
+    const matchesSearch = !q || name.includes(q);
+    const matchesType = filter === 'all' || ext === filter;
+    row.style.display = (matchesSearch && matchesType) ? '' : 'none';
+  });
+}
+
+function findPairedFile(path) {
+  // Given pdfs/foo.pdf → look for markdown/foo.md (and vice versa)
+  const parts = path.split('/');
+  if (parts.length < 2) return null;
+  const folder = parts[0];
+  const filename = parts.slice(1).join('/');
+  const dotIdx = filename.lastIndexOf('.');
+  if (dotIdx === -1) return null;
+  const base = filename.substring(0, dotIdx);
+  const ext = filename.substring(dotIdx + 1).toLowerCase();
+
+  // Only match across the two known scraper folders
+  let pairedPath = null;
+  if (ext === 'pdf' && folder === 'pdfs') {
+    pairedPath = `markdown/${base}.md`;
+  } else if (ext === 'md' && folder === 'markdown') {
+    pairedPath = `pdfs/${base}.pdf`;
+  }
+  if (!pairedPath) return null;
+  return allFiles.includes(pairedPath) ? pairedPath : null;
+}
+
+function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+async function deleteFile(path) {
+  let pairedPath = findPairedFile(path);
+  if (pairedPath) {
+    const ext = path.split('.').pop().toLowerCase();
+    const pairExt = pairedPath.split('.').pop().toUpperCase();
+    const msg = `Delete "${path}"?\n\nA matching ${pairExt} file also exists:\n  → ${pairedPath}\n\nAlso delete the paired ${pairExt} file?`;
+    const includePair = confirm(msg);
+    if (!includePair && !confirm(`Delete ONLY "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
+    if (includePair) {
+      try {
+        const pairData = await apiCall('POST', '/admin/supabase/delete', { file_path: pairedPath });
+        toast(`Deleted: ${pairedPath} (${pairData.qdrant_chunks_deleted} chunks removed)`, 'success');
+      } catch (e) { toast(`Failed to delete paired file ${pairedPath}: ${e.message}`, 'error'); }
+    }
+  } else {
+    if (!confirm(`Delete "${path}"?\nThis will also remove its Qdrant chunks.`)) return;
+  }
+  try {
+    const data = await apiCall('POST', '/admin/supabase/delete', { file_path: path });
+    toast(`Deleted: ${path} (${data.qdrant_chunks_deleted} chunks removed)`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteAllFiles() {
+  if (!confirm('⚠️ This will delete ALL files from Supabase AND clear Qdrant. Are you sure?')) return;
+  const typed = prompt('⚠️⚠️ This is irreversible! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Delete-all cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    const data = await apiCall('POST', '/admin/supabase/delete-all');
+    toast(`Deleted ${data.supabase_deleted} file(s), Qdrant cleared: ${data.qdrant_cleared}`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function downloadFile(path) {
+  try {
+    const data = await apiCall('POST', '/admin/supabase/download', { file_path: path });
+    if (data.url) {
+      const response = await fetch(data.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = path.split('/').pop();
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast(`Downloading: ${path.split('/').pop()}`, 'success');
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function openFileOnSupabase(path) {
+  try {
+    const data = await apiCall('POST', '/admin/supabase/public-url', { file_path: path });
+    if (data.url) {
+      window.open(data.url, '_blank');
+    }
+  } catch (e) {
+    toast('Could not open file: ' + e.message, 'error');
+  }
+}
+
+// ── Multi-select helpers ─────────────────────────────────────────────────────
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.file-cb').forEach(rowCb => {
+    rowCb.checked = cb.checked;
+    if (cb.checked) checkedFiles.add(rowCb.value);
+    else checkedFiles.delete(rowCb.value);
+  });
+  updateSelectedCount();
+}
+
+function onFileCheck(cb) {
+  if (cb.checked) checkedFiles.add(cb.value);
+  else checkedFiles.delete(cb.value);
+  document.getElementById('selectAllCb').checked =
+    checkedFiles.size === document.querySelectorAll('.file-cb').length;
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const count = checkedFiles.size;
+  document.getElementById('selectedCount').textContent = count;
+  document.getElementById('deleteSelectedBtn').disabled = count === 0;
+  document.getElementById('downloadSelectedBtn').disabled = count === 0;
+}
+
+async function downloadSelectedFiles() {
+  if (checkedFiles.size === 0) return;
+  const paths = Array.from(checkedFiles);
+  const btn = document.getElementById('downloadSelectedBtn');
+  btn.disabled = true;
+  btn.textContent = '📥 Zipping…';
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (adminToken) headers['X-Admin-Token'] = adminToken;
+    const res = await fetch('/admin/supabase/download-batch', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ file_paths: paths }),
+    });
+    if (res.status === 401) {
+      adminToken = '';
+      sessionStorage.removeItem('policybot_admin_token');
+      showLogin();
+      document.getElementById('loginError').textContent = 'Session expired. Please log in again.';
+      throw new Error('Session expired');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || 'Download failed');
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'policybot_files.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    toast(`Downloaded ${paths.length} file(s) as ZIP`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 Download Selected';
+  }
+}
+
+async function deleteSelectedFiles() {
+  if (checkedFiles.size === 0) return;
+  let paths = Array.from(checkedFiles);
+
+  // Check for paired files among the selection
+  const pairedPaths = new Set();
+  const alreadySelected = new Set(paths);
+  for (const p of paths) {
+    const pair = findPairedFile(p);
+    if (pair && !alreadySelected.has(pair) && !pairedPaths.has(pair)) {
+      pairedPaths.add(pair);
+    }
+  }
+
+  let msg = `⚠️ Delete ${paths.length} selected file(s)?\nThis will also remove their Qdrant chunks.`;
+  if (pairedPaths.size > 0) {
+    msg += `\n\nAlso found ${pairedPaths.size} matching pair(s) not selected:\n`;
+    for (const pp of pairedPaths) {
+      msg += `  → ${pp}\n`;
+    }
+    msg += `\nInclude these paired files in the delete?`;
+    const includePairs = confirm(msg);
+    if (includePairs) {
+      paths = paths.concat(Array.from(pairedPaths));
+    } else if (!confirm(`Delete ONLY the ${paths.length} selected file(s)?`)) {
+      return;
+    }
+  } else {
+    if (!confirm(msg)) return;
+  }
+
+  try {
+    const data = await apiCall('POST', '/admin/supabase/delete-batch', { file_paths: paths });
+    toast(`Deleted ${data.deleted_count} file(s) (${data.qdrant_chunks_deleted} chunks removed)`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+['dragenter','dragover'].forEach(evt => {
+  uploadZone.addEventListener(evt, e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+});
+['dragleave','drop'].forEach(evt => {
+  uploadZone.addEventListener(evt, e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); });
+});
+uploadZone.addEventListener('drop', e => {
+  const files = e.dataTransfer.files;
+  selectedFiles = Array.from(files);
+  document.getElementById('uploadPreview').textContent = `${files.length} file(s) selected`;
+});
+
+function handleFileSelect(event) {
+  selectedFiles = Array.from(event.target.files);
+  document.getElementById('uploadPreview').textContent = `${selectedFiles.length} file(s) selected`;
+}
+
+async function uploadFiles(convert) {
+  if (selectedFiles.length === 0) {
+    toast('No files selected', 'error');
+    return;
+  }
+  const folder = document.getElementById('uploadFolder').value;
+  const endpoint = convert ? '/admin/supabase/upload-convert' : '/admin/supabase/upload';
+  const progressBar = document.getElementById('uploadProgress');
+  progressBar.style.display = 'block';
+
+  for (const f of selectedFiles) {
+    const fd = new FormData();
+    fd.append('file', f);
+    if (folder) fd.append('folder', folder);
+    try {
+      const headers = {};
+      if (adminToken) headers['X-Admin-Token'] = adminToken;
+      const res = await fetch(endpoint, { method: 'POST', headers, body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      const label = convert ? `PDF+MD → ${data.md_chars} chars` : `${data.size} bytes`;
+      toast(`✅ ${data.path || f.name} (${label})`, 'success');
+    } catch (e) {
+      toast(`❌ ${f.name}: ${e.message}`, 'error');
+    }
+  }
+  progressBar.style.display = 'none';
+  selectedFiles = [];
+  document.getElementById('uploadPreview').textContent = '';
+  document.getElementById('fileInput').value = '';
+  listFiles();
+}
+
+// ── Ingestion ────────────────────────────────────────────────────────────────
+async function triggerIngestion() {
+  if (!confirm('🔄 This will:\n1. DELETE the Qdrant collection\n2. Re-create an empty collection\n3. Re-ingest all Markdown files from Supabase\n\nProceed?')) return;
+  showProgress('ingestProgress');
+  setBtnDisabled('ingestBtn', true);
+  try {
+    await apiCall('POST', '/admin/ingest');
+    switchToTab('terminal');
+    toast('Re-Ingestion started — switched to Live Terminal', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideProgress('ingestProgress');
+    setBtnDisabled('ingestBtn', false);
+  }
+}
+
+async function emptySupabaseBucket() {
+  if (!confirm('⚠️ Delete ALL files from the Supabase bucket?\n\nThis does NOT touch Qdrant — use "Delete All Files" if you want to clear both.\n\nType DELETE to confirm:')) return;
+  const typed = prompt('⚠️⚠️ This will delete every file in the bucket! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Empty bucket cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    const data = await apiCall('POST', '/admin/supabase/empty-bucket');
+    toast(`Supabase bucket emptied: ${data.files_deleted} file(s) deleted`, 'success');
+    listFiles();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteQdrantCollection() {
+  if (!confirm('💥 Permanently DELETE the Qdrant collection?\n\nUnlike "Clear Qdrant Only", this does NOT recreate the collection.\nYou will need to re-ingest to use the system again.\n\nType DELETE to confirm:')) return;
+  const typed = prompt('💥💥 Permanently delete Qdrant collection! Type DELETE to confirm:');
+  if (typed !== 'DELETE') {
+    toast('Delete collection cancelled (must type DELETE exactly)', 'info');
+    return;
+  }
+  try {
+    await apiCall('POST', '/admin/qdrant/delete-collection');
+    toast('Qdrant collection permanently deleted', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Scraper ──────────────────────────────────────────────────────────────────
+async function triggerScrape() {
+  showProgress('scrapeProgress');
+  setBtnDisabled('scrapeBtn', true);
+  try {
+    await apiCall('POST', '/admin/scrape');
+    switchToTab('terminal');
+    toast('Scraper started — switched to Live Terminal', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideProgress('scrapeProgress');
+    setBtnDisabled('scrapeBtn', false);
+  }
+}
+
+async function triggerScrapeAndIngest() {
+  showProgress('scrapeProgress');
+  setBtnDisabled('scrapeIngestBtn', true);
+  try {
+    await apiCall('POST', '/admin/scrape-and-ingest');
+    switchToTab('terminal');
+    toast('Scrape + Ingest started — switched to Live Terminal', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    hideProgress('scrapeProgress');
+    setBtnDisabled('scrapeIngestBtn', false);
+  }
+}
+
+// ── Stop All ─────────────────────────────────────────────────────────────────
+let stopClickCount = 0;
+let stopClickTimer = 0;
+
+async function stopAllProcesses() {
+  const now = Date.now();
+  if (now - stopClickTimer > 3000) stopClickCount = 0;
+  stopClickCount++;
+  stopClickTimer = now;
+
+  try {
+    const data = await apiCall('POST', '/admin/stop');
+    if (stopClickCount === 1) {
+      toast(data.message, 'info');
+    } else if (stopClickCount === 2) {
+      toast('⚠️ Backend shutting down! Page will become unreachable.', 'warning');
+      document.getElementById('stopAllBtn').textContent = '⏹ SHUTTING DOWN…';
+      document.getElementById('stopAllBtn').style.borderColor = '#fff';
+    } else {
+      toast('💥 Force-exiting backend!', 'error');
+    }
+  } catch (e) {
+    // Backend may already be dead — that's expected on 2nd/3rd click
+    if (stopClickCount >= 2) {
+      toast('Backend is shutting down…', 'warning');
+    } else {
+      toast('Stop failed: ' + e.message, 'error');
+    }
+  }
+}
+
+// ── Live Terminal (SSE) ──────────────────────────────────────────────────────
+function startLogStream() {
+  if (eventSource) eventSource.close();
+  if (!adminToken) return;
+
+  const sseUrl = `/admin/logs/stream?token=${encodeURIComponent(adminToken)}`;
+  eventSource = new EventSource(sseUrl);
+
+  eventSource.onmessage = (e) => {
+    try {
+      const entry = JSON.parse(e.data);
+      appendLogLine(entry.level || 'info', entry.msg || '');
+    } catch {}
+  };
+
+  eventSource.onerror = () => {
+    appendLogLine('error', '⚠️ Log stream disconnected. Will retry…');
+    eventSource.close();
+    setTimeout(startLogStream, 3000);
+  };
+}
+
+function appendLogLine(level, msg) {
+  const term = document.getElementById('terminal');
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="log-${level}">${escapeHtml(msg)}</span>`;
+  term.appendChild(div);
+  if (autoScroll) { term.scrollTop = term.scrollHeight; }
+}
+
+function clearTerminal() {
+  document.getElementById('terminal').innerHTML = '';
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoScrollBtn').textContent =
+    `📌 Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+(function init() {
+  if (adminToken) {
+    hideLogin();
+    checkStatus();
+    startLogStream();
+  } else {
+    showLogin();
+  }
+  fetchQdrantStats();
+})();
+</script>
+</body>
+</html>

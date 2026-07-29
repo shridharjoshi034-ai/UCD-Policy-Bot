@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.27",
     "nodemon": "^3.1.14",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -28,6 +29,6 @@
     "globals": "^17.6.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.0.12"
+    "vite": "^8.1.5"
   }
 }
