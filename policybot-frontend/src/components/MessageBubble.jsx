@@ -41,7 +41,68 @@ function StopSpeakingIcon() {
     </svg>
   );
 }
+function cleanTextForSpeech(markdown) {
+  const emojiReplacements = {
+    "✅": "Check.",
+    "❌": "Cross.",
+    "⚠️": "Warning.",
+    "ℹ️": "Information.",
+    "📌": "Note.",
+  };
 
+  let text = markdown;
+
+  // Replace meaningful emojis with spoken words
+  Object.entries(emojiReplacements).forEach(([emoji, replacement]) => {
+    text = text.replaceAll(emoji, replacement);
+  });
+
+  return text
+
+    // Convert Markdown headings into natural pauses
+    .replace(/^#{1,6}\s*(.*)$/gm, "$1.")
+
+    // Remove bold formatting
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+
+    // Remove italic formatting
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+
+    // Remove inline code formatting
+    .replace(/`([^`]+)`/g, "$1")
+
+    // Convert markdown links
+    // [Assessment Policy](url) -> Assessment Policy
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+
+    // Remove bullet points
+    .replace(/^\s*[-*+]\s+/gm, "")
+
+    // Remove numbered lists
+    .replace(/^\s*\d+\.\s+/gm, "")
+
+    // Remove blockquotes
+    .replace(/^>\s+/gm, "")
+
+    // Remove markdown table separators
+    .replace(/\|/g, " ")
+
+    // Remove horizontal lines
+    .replace(/^[-*_]{3,}$/gm, "")
+
+    // Remove remaining emojis
+    .replace(
+      /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu,
+      ""
+    )
+
+    // Replace multiple spaces/newlines
+    .replace(/\s+/g, " ")
+
+    .trim();
+}
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const text = message.content
@@ -73,8 +134,9 @@ export default function MessageBubble({ message }) {
       setIsSpeaking(false);
       return;
     }
-
-    const speech = new SpeechSynthesisUtterance(text);
+    
+    const cleanSpeechText = cleanTextForSpeech(text);
+    const speech = new SpeechSynthesisUtterance(cleanSpeechText);
 
     speech.rate = 1;
     speech.pitch = 1;
