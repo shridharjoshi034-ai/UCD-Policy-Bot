@@ -200,26 +200,32 @@ def _list_all_files(client: Client, bucket_name: str, prefix: str = "") -> list[
 
 def get_public_url(remote_path: str) -> str:
     """Generate a public (permanent) URL for a file in the Supabase bucket."""
-    client = get_supabase_client()
-    bucket = get_bucket_name()
-    return client.storage.from_(bucket).get_public_url(remote_path)
+    try:
+        client = get_supabase_client()
+        bucket = get_bucket_name()
+        return client.storage.from_(bucket).get_public_url(remote_path)
+    except Exception:
+        return f"/{remote_path}"
 
 
 def create_signed_url(remote_path: str, expires_in: int = 300) -> str:
     """Generate a signed download URL valid for `expires_in` seconds."""
-    client = get_supabase_client()
-    bucket = get_bucket_name()
-    result = client.storage.from_(bucket).create_signed_url(remote_path, expires_in)
-    if isinstance(result, dict):
-        return result.get("signedURL", result.get("signed_url", str(result)))
-    return str(result)
+    try:
+        client = get_supabase_client()
+        bucket = get_bucket_name()
+        result = client.storage.from_(bucket).create_signed_url(remote_path, expires_in)
+        if isinstance(result, dict):
+            return result.get("signedURL", result.get("signed_url", str(result)))
+        return str(result)
+    except Exception:
+        return get_public_url(remote_path)
 
 
 def file_exists(remote_path: str) -> bool:
     """Check whether a file exists in the bucket."""
-    client = get_supabase_client()
-    bucket = get_bucket_name()
     try:
+        client = get_supabase_client()
+        bucket = get_bucket_name()
         # Try listing with the exact path prefix to see if it exists
         parent = "/".join(remote_path.split("/")[:-1])
         filename = remote_path.split("/")[-1]

@@ -66,6 +66,9 @@ async def chat_stream(request : ChatRequest):
             print(f"[chat/stream ERROR] {error_msg}")
             traceback.print_exc()
             yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
+        finally:
+            if hasattr(pipeline, "langfuse"):
+                pipeline.langfuse.flush()
   
     # Return a streaming SSE response with keep-alive headers
     return StreamingResponse(
