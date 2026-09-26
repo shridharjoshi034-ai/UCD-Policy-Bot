@@ -57,7 +57,6 @@ from urllib.parse import urljoin, urlparse
 
 import pymupdf4llm
 import requests
-import urllib3
 from bs4 import BeautifulSoup
 from app.services import storage_service
 
@@ -71,10 +70,11 @@ try:
 except Exception:
     fitz = None
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
 # ── Config ────────────────────────────────────────────────────────────────────
+# TLS verification is ON. Set SCRAPER_VERIFY_TLS=0 only if a corporate proxy
+# re-signs UCD's certificates and you consciously accept the downgrade.
+VERIFY_TLS = os.environ.get("SCRAPER_VERIFY_TLS", "1") not in ("0", "false", "False")
+
 BASE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -155,7 +155,7 @@ def yaml_quote(value: object) -> str:
 
 
 def http_get(url: str, stream: bool = False, retries: int = MAX_RETRIES) -> requests.Response | None:
-    """GET with retries. SSL verify=False for UCD institutional certs."""
+    """GET with retries. TLS verification is on (see VERIFY_TLS)."""
     for attempt in range(1, retries + 1):
         try:
             r = requests.get(
@@ -164,7 +164,7 @@ def http_get(url: str, stream: bool = False, retries: int = MAX_RETRIES) -> requ
                 timeout=PDF_TIMEOUT if stream else HTTP_TIMEOUT,
                 stream=stream,
                 allow_redirects=True,
-                verify=False,
+                verify=VERIFY_TLS,
             )
             r.raise_for_status()
             time.sleep(DELAY)
